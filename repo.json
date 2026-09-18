@@ -1,0 +1,24 @@
+[
+  {
+    "Author": "Anmi",
+    "Name": "ArenaPilot-斗兽塔助手",
+    "Description": "自动执行已支持的斗兽奇弈流程，包括入场、编队、路线导航、战斗准备、奖励领取、休息、宝箱、商店和最终结算。",
+    "InternalName": "ArenaPilot",
+    "IconUrl": "https://raw.githubusercontent.com/anmili2022/ArenaPilot/main/images/icon.png?v=1",
+    "AssemblyVersion": "0.2.4.0",
+    "RepoUrl": "https://github.com/anmili2022/ArenaPilot",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 15,
+    "Tags": [
+      "beast arena",
+      "automation",
+      "utility"
+    ],
+    "IsHide": false,
+    "IsTestingExclusive": false,
+    "DownloadLinkInstall": "https://github.com/anmili2022/ArenaPilot/releases/download/0.2.4.0/ArenaPilot.zip",
+    "DownloadLinkTesting": "https://github.com/anmili2022/ArenaPilot/releases/download/0.2.4.0/ArenaPilot.zip",
+    "DownloadLinkUpdate": "https://github.com/anmili2022/ArenaPilot/releases/download/0.2.4.0/ArenaPilot.zip",
+    "LastUpdated": "2026-09-18T15:59:19Z"
+  }
+]
