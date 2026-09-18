@@ -1,0 +1,10 @@
+bin/
+obj/
+output/
+.vs/
+.vscode/
+*.user
+*.suo
+*.rar
+*.zip
+*.log
