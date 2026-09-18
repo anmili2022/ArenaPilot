@@ -48,7 +48,7 @@ public sealed class Configuration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 5;
+    public int Version { get; set; } = 6;
     public string SelectedStageKey { get; set; } = string.Empty;
     public bool DiagnosticsEnabled { get; set; } = true;
     public int RepeatCount { get; set; } = 1;
@@ -106,6 +106,13 @@ public sealed class Configuration : IPluginConfiguration
         {
             AutoCollectShopItems = false;
             Version = 5;
+            changed = true;
+        }
+        if (Version < 6)
+        {
+            SkipShop = false;
+            SkipRest = false;
+            Version = 6;
             changed = true;
         }
 

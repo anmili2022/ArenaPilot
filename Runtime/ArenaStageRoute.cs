@@ -2,7 +2,12 @@ using System.Numerics;
 
 namespace ArenaPilot;
 
-public sealed record ArenaStageNode(int Index, Vector3 Center, IReadOnlyList<int> Next, ArenaNodeKind Kind);
+public sealed record ArenaStageNode(
+    int Index,
+    Vector3 Center,
+    IReadOnlyList<int> Next,
+    ArenaNodeKind Kind,
+    bool IsNavigable = true);
 
 public sealed class ArenaStageRoute
 {
@@ -39,6 +44,8 @@ public sealed class ArenaStageRoute
         var point = new Vector2(position.X, position.Z);
         foreach (var node in Nodes)
         {
+            if (!node.IsNavigable)
+                continue;
             var center = new Vector2(node.Center.X, node.Center.Z);
             if (Vector2.Distance(point, center) <= NodeRadius)
                 return node.Index;

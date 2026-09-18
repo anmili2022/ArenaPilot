@@ -19,7 +19,7 @@ public sealed class ArenaController
     private static readonly TimeSpan FullFlowTimeout = TimeSpan.FromMinutes(45);
     private static readonly TimeSpan NodeEventTimeout = TimeSpan.FromSeconds(12);
     private static readonly string Version = typeof(ArenaController).Assembly
-        .GetName().Version?.ToString(3) ?? "0.2.3";
+        .GetName().Version?.ToString(3) ?? "0.2.4";
 
     private readonly ArenaUiReader reader;
     private readonly SnapshotExporter exporter;
@@ -568,7 +568,8 @@ public sealed class ArenaController
         {
             var compactPrompt = string.Concat((promptText ?? string.Empty).Where(x => !char.IsWhiteSpace(x)));
             if (compactPrompt.Contains("只让玩家休息", StringComparison.Ordinal)
-                && compactPrompt.Contains("恢复90%体力", StringComparison.Ordinal))
+                && compactPrompt.Contains("恢复", StringComparison.Ordinal)
+                && compactPrompt.Contains("体力", StringComparison.Ordinal))
                 restConfirmed = true;
             if (PartySetupAction.IsUnderfilledChallengePrompt(LastSnapshot)
                 || PromptAction.ReadText(LastSnapshot)?.Contains("魔兽未满") == true)
@@ -1568,8 +1569,10 @@ public sealed class ArenaController
             {
                 var next = customRoute[index + 1];
                 var currentNode = route.Nodes.FirstOrDefault(x => x.Index == node);
+                var nextNode = route.Nodes.FirstOrDefault(x => x.Index == next);
                 if (currentNode?.Next.Contains(next) == true
-                    && route.Nodes.Any(x => x.Index == next))
+                    && currentNode.IsNavigable
+                    && nextNode?.IsNavigable == true)
                     return next;
             }
         }

@@ -14,7 +14,18 @@ public static class ArenaRoutes
     public static IReadOnlyList<ArenaStageRoute> All { get; } =
     [
         FirstArenaRoute.Route,
+        ThirdArenaRoute.Route,
         FourthArenaRoute.Route,
+        FifthArenaRoute.Route,
+    ];
+
+    public static IReadOnlyList<ArenaStageRoute> DisplayRoutes { get; } =
+    [
+        FirstArenaRoute.Route,
+        SecondArenaRoute.Route,
+        ThirdArenaRoute.Route,
+        FourthArenaRoute.Route,
+        FifthArenaRoute.Route,
     ];
 
     public static string GetStageName(int stageId)
@@ -38,5 +49,5 @@ public static class ArenaRoutes
     }
 
     public static ArenaStageRoute? GetByStage(int stageId)
-        => All.FirstOrDefault(r => r.StageId == stageId);
+        => DisplayRoutes.FirstOrDefault(r => r.StageId == stageId);
 }

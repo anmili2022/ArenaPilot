@@ -6,7 +6,8 @@
   "Tags": ["beast arena", "diagnostics", "utility"],
   "CategoryTags": ["Utility"],
   "InternalName": "ArenaPilot",
+  "IconUrl": "https://raw.githubusercontent.com/anmili2022/ArenaPilot/main/images/icon.png?v=1",
   "ApplicableVersion": "any",
-  "AssemblyVersion": "0.2.3.0",
+  "AssemblyVersion": "0.2.4.0",
   "DalamudApiLevel": 15
 }

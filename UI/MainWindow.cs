@@ -7,7 +7,7 @@ namespace ArenaPilot;
 public sealed class MainWindow
 {
     private static readonly string Version = typeof(MainWindow).Assembly
-        .GetName().Version?.ToString(3) ?? "0.2.3";
+        .GetName().Version?.ToString(3) ?? "0.2.4";
 
     private readonly ArenaController controller;
     private readonly Configuration config;
@@ -46,7 +46,7 @@ public sealed class MainWindow
             return;
 
         ImGui.SetNextWindowSize(new Vector2(420f, 0f), ImGuiCond.FirstUseEver);
-        if (!ImGui.Begin($"ArenaPilot v{Version}", ref isOpen, ImGuiWindowFlags.NoScrollbar))
+        if (!ImGui.Begin($"ArenaPilot-斗兽塔助手 v{Version}", ref isOpen, ImGuiWindowFlags.NoScrollbar))
         {
             ImGui.End();
             return;
@@ -306,7 +306,7 @@ public sealed class MainWindow
             return;
 
         ImGui.SetNextWindowSize(new Vector2(560f, 640f), ImGuiCond.FirstUseEver);
-        if (!ImGui.Begin($"ArenaPilot 配置 v{Version}", ref configOpen))
+        if (!ImGui.Begin($"ArenaPilot-斗兽塔助手 配置 v{Version}", ref configOpen))
         {
             ImGui.End();
             return;
@@ -396,7 +396,7 @@ public sealed class MainWindow
         if (!ImGui.BeginTabBar("##route-tabs"))
             return;
 
-        foreach (var route in ArenaRoutes.All)
+        foreach (var route in ArenaRoutes.DisplayRoutes)
         {
             if (!ImGui.BeginTabItem(route.Name))
                 continue;
@@ -416,12 +416,16 @@ public sealed class MainWindow
             routeDrafts[route.StageId] = draft;
         }
 
+        if (!route.IsConfigured)
+            ImGui.BeginDisabled();
         if (ImGui.Button($"设为目标盘##route-{route.StageId}"))
         {
             config.TargetStage = route.StageId;
             config.Save();
             routeEditMessage = $"目标盘已设为 {route.Name}";
         }
+        if (!route.IsConfigured)
+            ImGui.EndDisabled();
         ImGui.SameLine();
         if (ImGui.Button($"撤销##route-{route.StageId}") && draft.Count > 1)
         {
@@ -436,6 +440,8 @@ public sealed class MainWindow
             routeEditMessage = "已恢复默认路线草稿";
         }
         ImGui.SameLine();
+        if (!route.IsConfigured)
+            ImGui.BeginDisabled();
         if (ImGui.Button($"保存路线##route-{route.StageId}"))
         {
             config.CustomRoutes[route.StageId] = [.. draft];
@@ -443,8 +449,12 @@ public sealed class MainWindow
             config.Save();
             routeEditMessage = $"已保存 {route.Name}：{string.Join(" → ", draft)}";
         }
+        if (!route.IsConfigured)
+            ImGui.EndDisabled();
 
         ImGui.TextUnformatted($"当前路线：{string.Join(" → ", draft)}");
+        if (!route.IsConfigured)
+            ImGui.TextColored(new Vector4(0.95f, 0.62f, 0.2f, 1f), "仅展示：等待实测坐标后启用导航和路线保存");
         if (!string.IsNullOrWhiteSpace(routeEditMessage))
             ImGui.TextDisabled(routeEditMessage);
 
@@ -491,7 +501,9 @@ public sealed class MainWindow
         foreach (var node in route.Nodes)
         {
             var center = NodePosition(node);
-            var nodeColor = GetRouteNodeColor(node.Kind);
+            var nodeColor = node.IsNavigable
+                ? GetRouteNodeColor(node.Kind)
+                : ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.32f, 0.35f, 1f));
             drawList.AddCircleFilled(center, 15f, nodeColor);
             drawList.AddCircle(center, 15f,
                 draft.Contains(node.Index)
@@ -507,7 +519,9 @@ public sealed class MainWindow
             {
                 ImGui.BeginTooltip();
                 ImGui.TextUnformatted($"节点 {node.Index} · {ArenaNodeKindLabels.Get(node.Kind)}");
-                ImGui.TextDisabled($"{node.Center.X:F2}, {node.Center.Y:F2}, {node.Center.Z:F2}");
+                ImGui.TextDisabled(node.IsNavigable
+                    ? $"{node.Center.X:F2}, {node.Center.Y:F2}, {node.Center.Z:F2}"
+                    : "坐标未采集，仅用于路线图展示");
                 ImGui.EndTooltip();
             }
         }
@@ -516,6 +530,13 @@ public sealed class MainWindow
 
     private void AddRouteNode(ArenaStageRoute route, List<int> draft, int node)
     {
+        var target = route.Nodes.First(x => x.Index == node);
+        if (!target.IsNavigable)
+        {
+            routeEditMessage = $"节点 {node} 尚未采集坐标，不能加入路线";
+            return;
+        }
+
         var existingIndex = draft.IndexOf(node);
         if (existingIndex >= 0)
         {
