@@ -7,7 +7,7 @@ namespace ArenaPilot;
 public sealed class MainWindow
 {
     private static readonly string Version = typeof(MainWindow).Assembly
-        .GetName().Version?.ToString(3) ?? "0.2.4";
+        .GetName().Version?.ToString(4) ?? "0.2.4.3";
 
     private readonly ArenaController controller;
     private readonly Configuration config;
@@ -245,7 +245,7 @@ public sealed class MainWindow
 
         a = config.AutoApproach;
         if (ImGui.Checkbox("自动接近+倒计时", ref a)) { config.AutoApproach = a; config.Save(); }
-        DrawSettingTooltip("启用：目标圈边距离超过20米时自动接近；进入范围后等待10秒并发送驯兽师倒计时。\n关闭：不移动、不发送倒计时，战斗位置由玩家控制。");
+        DrawSettingTooltip("启用：目标圈边距离超过20米时自动接近；目标实际出现并进入范围后等待5秒，再发送基础设置中的倒计时指令。\n关闭：不移动、不发送倒计时，战斗位置由玩家控制。");
 
     }
 
@@ -361,6 +361,15 @@ public sealed class MainWindow
         }
         ImGui.Separator();
         ImGui.TextDisabled($"当前配置：{string.Join(" + ", config.FlutePetNames)}");
+        ImGui.Separator();
+        ImGui.SetNextItemWidth(260f);
+        var countdownCommand = config.CountdownCommand;
+        if (ImGui.InputText("倒计时指令", ref countdownCommand, 128))
+        {
+            config.CountdownCommand = countdownCommand;
+            config.Save();
+        }
+        DrawSettingTooltip("自动接近 BOSS 后发送的游戏指令，默认 /驯兽师 倒计时 10。留空时不会发送倒计时指令。");
     }
 
     private void DrawStrategyConfig()

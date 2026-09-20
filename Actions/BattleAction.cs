@@ -32,17 +32,23 @@ public static class BattleAction
         }
     }
 
-    public static bool TryCountdown(out string error)
+    public static bool TryCountdown(string command, out string error)
     {
         if (!DalamudApi.ClientState.IsLoggedIn || DalamudApi.ObjectTable.LocalPlayer == null)
         {
-            error = "玩家尚未准备好，无法发送驯兽师十秒倒计时";
+            error = "玩家尚未准备好，无法发送倒计时指令";
             return false;
         }
 
-        if (!GameCommandService.Execute("/驯兽师 倒计时 10"))
+        if (string.IsNullOrWhiteSpace(command))
         {
-            error = "驯兽师十秒倒计时发送失败";
+            error = "倒计时指令为空";
+            return false;
+        }
+
+        if (!GameCommandService.Execute(command.Trim()))
+        {
+            error = "倒计时指令发送失败";
             return false;
         }
 

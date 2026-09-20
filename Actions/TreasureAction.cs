@@ -11,9 +11,12 @@ public static class TreasureAction
         ArenaSnapshot snapshot,
         IReadOnlyList<uint> equipmentPriority,
         IReadOnlyList<uint> itemPriority,
+        IReadOnlyCollection<uint> excludedItemIds,
+        out uint selectedItemId,
         out string selectedName,
         out string error)
     {
+        selectedItemId = 0;
         selectedName = string.Empty;
         var addon = snapshot.Addons.FirstOrDefault(x => x.Name == "XBMContentsTreasure" && x.IsReady);
         if (addon == null)
@@ -35,11 +38,12 @@ public static class TreasureAction
         var hasRecoveryItem = ownedItems.Any(x => RecoveryItemIds.Contains(x));
         var hasElementalAxe = CrucibleItemCatalog.HasElementalAxe(ownedEquipment);
         var eligibleCandidates = candidates
+            .Where(x => !excludedItemIds.Contains(x.ItemId))
             .Where(x => !hasElementalAxe || !CrucibleItemCatalog.IsElementalAxe(x.ItemId))
             .ToArray();
         if (eligibleCandidates.Length == 0)
         {
-            error = "候选奖励只有重复的属性斧，已跳过领取";
+            error = "没有可领取的非重复候选奖励";
             return false;
         }
         TreasureCandidate? selected = null;
@@ -64,6 +68,7 @@ public static class TreasureAction
         }
 
         selected ??= eligibleCandidates[0];
+        selectedItemId = selected.ItemId;
         selectedName = string.IsNullOrWhiteSpace(selected.Name)
             ? CrucibleItemCatalog.GetName(selected.ItemId)
             : selected.Name;

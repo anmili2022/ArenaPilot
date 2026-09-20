@@ -19,7 +19,7 @@ public sealed class ArenaController
     private static readonly TimeSpan FullFlowTimeout = TimeSpan.FromMinutes(45);
     private static readonly TimeSpan NodeEventTimeout = TimeSpan.FromSeconds(12);
     private static readonly string Version = typeof(ArenaController).Assembly
-        .GetName().Version?.ToString(3) ?? "0.2.4";
+        .GetName().Version?.ToString(4) ?? "0.2.4.3";
 
     private readonly ArenaUiReader reader;
     private readonly SnapshotExporter exporter;
@@ -39,7 +39,7 @@ public sealed class ArenaController
     private DateTime fullFlowDeadlineUtc;
     private DateTime nextFullFlowActionUtc;
     private bool countdownSent;
-    private DateTime battleStartedAtUtc;
+    private DateTime countdownReadyAtUtc;
     private bool challengeSent;
     private bool challengeConfirmed;
     private bool battleObserved;
@@ -52,6 +52,8 @@ public sealed class ArenaController
     private bool restTried;
     private bool restConfirmed;
     private bool treasureTried;
+    private uint pendingTreasureItemId;
+    private readonly HashSet<uint> rejectedTreasureItemIds = [];
     private bool shopTried;
     private ShopStage shopStage;
     private ShopPendingAction shopPendingAction;
@@ -75,6 +77,7 @@ public sealed class ArenaController
     private int shopCatalogScrollSlot;
     private int shopCatalogAwaitingSlot = -1;
     private bool shopCatalogScanComplete;
+    private bool snapshotInitialized;
 
     public ArenaPhase Phase { get; private set; } = ArenaPhase.Idle;
     public ArenaSnapshot LastSnapshot { get; private set; }
@@ -156,11 +159,29 @@ public sealed class ArenaController
         shopCatalogCollector = new ShopCatalogCollector(
             Path.Combine(Path.GetDirectoryName(DiagnosticsDirectory)!, "ArenaShopItems.csv"));
         navigation = new VnavmeshClient(pluginInterface);
-        LastSnapshot = reader.Read(Phase);
-        Phase = LastSnapshot.Phase;
-        currentRoute = ArenaRoutes.Find(LastSnapshot.TerritoryId, LastSnapshot.ContentId);
+        LastSnapshot = CreateInitialSnapshot();
         DalamudApi.Framework.Update += OnFrameworkUpdate;
     }
+
+    private static ArenaSnapshot CreateInitialSnapshot()
+        => new(
+            DateTime.UtcNow,
+            ArenaPhase.Idle,
+            0,
+            0,
+            false,
+            0,
+            string.Empty,
+            null,
+            null,
+            null,
+            null,
+            ArenaNodeKind.Unknown,
+            string.Empty,
+            [],
+            string.Empty,
+            "等待首次主线程状态读取",
+            []);
 
     public void StartFullFlow()
     {
@@ -412,6 +433,11 @@ public sealed class ArenaController
     private void OnFrameworkUpdate(Dalamud.Plugin.Services.IFramework framework)
     {
         _ = framework;
+        if (!snapshotInitialized)
+        {
+            RefreshSnapshot();
+            snapshotInitialized = true;
+        }
         TickShopCatalogCollection();
         if (startingBattle)
         {
@@ -788,7 +814,15 @@ public sealed class ArenaController
             if (LastSnapshot.VisibleAddons.Contains("SelectOk", StringComparer.Ordinal))
             {
                 if (TreasureAction.TryDismissPopup(out var popupError))
-                    FullFlowStatus = "已关闭宝物重复提示";
+                {
+                    if (pendingTreasureItemId != 0)
+                        rejectedTreasureItemIds.Add(pendingTreasureItemId);
+                    FullFlowStatus = pendingTreasureItemId == 0
+                        ? "已关闭宝物重复提示，正在重新选择"
+                        : $"{CrucibleItemCatalog.GetName(pendingTreasureItemId)} 已重复，正在选择下一件宝物";
+                    pendingTreasureItemId = 0;
+                    treasureTried = false;
+                }
                 else
                     FullFlowStatus = popupError;
                 nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
@@ -800,9 +834,12 @@ public sealed class ArenaController
                 if (TreasureAction.TryTakePreferred(LastSnapshot,
                         config.EquipmentPurchasePriority,
                         config.ShopPurchasePriority,
+                        rejectedTreasureItemIds,
+                        out var selectedTreasureItemId,
                         out var selectedTreasureName,
                         out _))
                 {
+                    pendingTreasureItemId = selectedTreasureItemId;
                     treasureTried = true;
                     FullFlowStatus = $"正在领取宝箱奖励：{selectedTreasureName}";
                 }
@@ -1071,9 +1108,6 @@ public sealed class ArenaController
             }
             if (LastSnapshot.Phase == ArenaPhase.BattlePreparation)
             {
-                if (battleStartedAtUtc == DateTime.MinValue)
-                    battleStartedAtUtc = DateTime.UtcNow;
-
                 if (config.AutoApproach && !assigningParty)
                 {
                     var player = DalamudApi.ObjectTable.LocalPlayer;
@@ -1082,23 +1116,36 @@ public sealed class ArenaController
                         var dist = BossAction.GetDistanceToBoss(player);
                         if (!dist.HasValue)
                         {
+                            countdownReadyAtUtc = DateTime.MinValue;
                             nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(3);
                             return;
                         }
                         if (dist.Value > 20f)
                         {
+                            countdownReadyAtUtc = DateTime.MinValue;
                             FullFlowStatus = $"正在接近BOSS（{dist.Value:F1}米）";
                             navigation.MoveTo(BossAction.GetClosePosition(player));
                             nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
                             return;
                         }
-                        if (!countdownSent && DateTime.UtcNow - battleStartedAtUtc >= TimeSpan.FromSeconds(10))
+                        if (!countdownSent && countdownReadyAtUtc == DateTime.MinValue)
                         {
-                            if (!BattleAction.TryCountdown(out var countdownError))
+                            countdownReadyAtUtc = DateTime.UtcNow;
+                            FullFlowStatus = "目标已出现并进入范围，等待5秒后发送倒计时";
+                            nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                            return;
+                        }
+                        if (!countdownSent && DateTime.UtcNow - countdownReadyAtUtc >= TimeSpan.FromSeconds(5))
+                        {
+                            if (!BattleAction.TryCountdown(config.CountdownCommand, out var countdownError))
+                            {
                                 FullFlowStatus = $"倒计时未发送：{countdownError}";
+                            }
                             else
-                                FullFlowStatus = "已发送10秒倒计时";
-                            countdownSent = true;
+                            {
+                                FullFlowStatus = $"已发送倒计时：{config.CountdownCommand}";
+                                countdownSent = true;
+                            }
                             nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
                             return;
                         }
@@ -1305,7 +1352,9 @@ public sealed class ArenaController
 
     private void RememberEventNode()
     {
-        eventNode = LastSnapshot.CurrentNode ?? targetNode ?? eventNode;
+        // Node events can open just before the player enters the coordinate radius.
+        // Prefer the navigation target so the completed event follows that node.
+        eventNode = targetNode ?? LastSnapshot.CurrentNode ?? eventNode;
     }
 
     private void CompleteCurrentEventIfReturned()
@@ -1316,6 +1365,16 @@ public sealed class ArenaController
         var node = LastSnapshot.CurrentNode.Value;
         if (eventNode == node || targetNode == node)
         {
+            var eventCompleted = battleObserved
+                || restLeaveSent
+                || treasureTried
+                || shopTried;
+            if (eventNode == node && eventCompleted)
+            {
+                MarkProcessed(node);
+                return;
+            }
+
             var kind = currentRoute?.GetKind(node) ?? ArenaNodeKind.Unknown;
             if (kind is ArenaNodeKind.Battle or ArenaNodeKind.Boss)
             {
@@ -1431,6 +1490,8 @@ public sealed class ArenaController
         restTried = false;
         restConfirmed = false;
         treasureTried = false;
+        pendingTreasureItemId = 0;
+        rejectedTreasureItemIds.Clear();
         shopTried = false;
         shopStage = ShopStage.SellingItems;
         shopPendingAction = ShopPendingAction.None;
@@ -1448,7 +1509,7 @@ public sealed class ArenaController
         fullFlow = true;
         processedNodes.Clear();
         countdownSent = false;
-        battleStartedAtUtc = DateTime.MinValue;
+        countdownReadyAtUtc = DateTime.MinValue;
         challengeSent = entered;
         challengeConfirmed = entered;
         battleObserved = false;
@@ -1461,6 +1522,8 @@ public sealed class ArenaController
         restTried = false;
         restConfirmed = false;
         treasureTried = false;
+        pendingTreasureItemId = 0;
+        rejectedTreasureItemIds.Clear();
         shopTried = false;
         shopStage = ShopStage.SellingItems;
         shopPendingAction = ShopPendingAction.None;
@@ -1643,7 +1706,11 @@ public sealed class ArenaController
     public void Dispose()
     {
         DalamudApi.Framework.Update -= OnFrameworkUpdate;
-        Stop("插件卸载");
+        startingBattle = false;
+        assigningParty = false;
+        fullFlow = false;
+        startBattleAfterParty = false;
+        navigation.Stop();
     }
 
     private ArenaPartyMember[] ReadPartyMembers()

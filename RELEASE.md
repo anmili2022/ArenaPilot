@@ -1,13 +1,13 @@
 # ArenaPilot 发布流程
 
-ArenaPilot 使用四段版本号，例如 `0.2.4.0`。Git 标签、程序集版本、插件清单版本和 GitHub Release 必须一致。
+ArenaPilot 的 UI、程序集、插件清单和 Git 标签统一使用四段版本，例如 `0.2.4.3`。
 
 ## 发布前检查
 
 1. 更新 `ArenaPilot.csproj`：
-   - `Version` 使用三段显示版本，例如 `0.2.4`。
-   - `AssemblyInformationalVersion` 使用相同三段版本。
-   - `AssemblyVersion` 使用四段版本，例如 `0.2.4.0`。
+   - `Version` 使用四段版本，例如 `0.2.4.3`。
+   - `AssemblyInformationalVersion` 使用相同四段版本。
+   - `AssemblyVersion` 使用相同四段版本。
 2. 更新 `ArenaPilot.json` 的 `AssemblyVersion`。
 3. 更新 UI 和控制器中的版本兜底值。
 4. 更新 `repo.json` 的版本、下载链接和 `LastUpdated`。
@@ -41,15 +41,15 @@ git log --oneline -10
 
 ```powershell
 git add .
-git commit -m "Release 0.2.4"
+git commit -m "Release 0.2.4.3"
 git push origin main
 ```
 
 3. 创建并推送四段版本标签：
 
 ```powershell
-git tag 0.2.4.0
-git push origin 0.2.4.0
+git tag 0.2.4.3
+git push origin 0.2.4.3
 ```
 
 4. 标签推送后，`.github/workflows/release.yml` 会在 Windows Runner 上：

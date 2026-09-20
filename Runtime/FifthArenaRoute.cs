@@ -41,7 +41,7 @@ public static class FifthArenaRoute
             new(23, new Vector3(-709.00f, 0f, -72.00f), [26], ArenaNodeKind.Unknown, false),
             new(24, new Vector3(-699.94f, 0f, -71.78f), [26], ArenaNodeKind.Rest),
             new(25, new Vector3(-691.00f, 0f, -72.00f), [26], ArenaNodeKind.Unknown, false),
-            new(26, new Vector3(-700.04f, 0f, -79.33f), [], ArenaNodeKind.Boss),
+            new(26, new Vector3(-700.00f, 0f, -80.00f), [], ArenaNodeKind.Boss),
         ],
         PreferredNext = new Dictionary<int, int>
         {
