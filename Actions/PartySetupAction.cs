@@ -50,11 +50,9 @@ public static class PartySetupAction
 
     public static bool IsComplete(IReadOnlyList<ArenaPartyMember> members, Configuration config)
     {
-        var names = config.FlutePetNames;
         var petIds = config.FlutePetIds;
-        return names.Select((name, slot) => members.Any(x =>
-            x.Name == name
-            && x.PetId == petIds[slot]
+        return petIds.Select((petId, slot) => members.Any(x =>
+            x.PetId == petId
             && x.Slot == slot
             && x.Hp > 0)).All(x => x)
             && members.Count(x => x.Slot == 0) == 1
@@ -64,8 +62,8 @@ public static class PartySetupAction
 
     public static ArenaPartyMember? NextToAssign(IReadOnlyList<ArenaPartyMember> members, Configuration config)
     {
-        var desired = config.FlutePetNames
-            .Select(name => members.FirstOrDefault(x => x.Name == name && x.Hp > 0))
+        var desired = config.FlutePetIds
+            .Select(petId => members.FirstOrDefault(x => x.PetId == petId && x.Hp > 0))
             .ToArray();
         if (desired.Any(x => x == null))
             return null;

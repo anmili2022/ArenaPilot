@@ -48,10 +48,10 @@ public sealed class Configuration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 8;
+    public int Version { get; set; } = 9;
     public string SelectedStageKey { get; set; } = string.Empty;
     public bool DiagnosticsEnabled { get; set; } = true;
-    public int RepeatCount { get; set; } = 1;
+    public int RepeatCount { get; set; }
     public bool SkipShop { get; set; }
     public bool SkipRest { get; set; }
     public bool AutoTargetBoss { get; set; }
@@ -126,6 +126,12 @@ public sealed class Configuration : IPluginConfiguration
         {
             CountdownCommand = "/驯兽师 倒计时 10";
             Version = 8;
+            changed = true;
+        }
+        if (Version < 9)
+        {
+            RepeatCount = 0;
+            Version = 9;
             changed = true;
         }
 

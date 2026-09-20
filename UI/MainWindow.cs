@@ -7,7 +7,7 @@ namespace ArenaPilot;
 public sealed class MainWindow
 {
     private static readonly string Version = typeof(MainWindow).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.3";
+        .GetName().Version?.ToString(4) ?? "0.2.4.5";
 
     private readonly ArenaController controller;
     private readonly Configuration config;
@@ -239,13 +239,35 @@ public sealed class MainWindow
         DrawSettingTooltip("启用：进入帐篷后直接离开，不恢复玩家或魔兽体力。\n关闭：执行休息确认流程，完成后自动离开帐篷。");
 
         a = config.AutoTargetBoss;
-        if (ImGui.Checkbox("自动选中BOSS", ref a)) { config.AutoTargetBoss = a; config.Save(); }
-        DrawSettingTooltip("启用：战斗准备阶段按已知 BaseId 自动选中当前战斗目标。\n关闭：不修改当前目标，需要玩家或其他插件选中敌人。");
+        if (ImGui.Checkbox("自动选中BOSS", ref a))
+        {
+            config.AutoTargetBoss = a;
+            if (!a)
+                BossAction.ClearKnownBossTarget();
+            config.Save();
+        }
+        DrawSettingTooltip("启用：战斗准备阶段按已知 BaseId 自动选中当前战斗目标。\n关闭：立即清除本插件已选中的已知 BOSS，之后不再修改目标。其他战斗插件仍可能自行选怪。");
         ImGui.SameLine(200f);
 
         a = config.AutoApproach;
         if (ImGui.Checkbox("自动接近+倒计时", ref a)) { config.AutoApproach = a; config.Save(); }
         DrawSettingTooltip("启用：目标圈边距离超过20米时自动接近；目标实际出现并进入范围后等待5秒，再发送基础设置中的倒计时指令。\n关闭：不移动、不发送倒计时，战斗位置由玩家控制。");
+
+        ImGui.SetNextItemWidth(100f);
+        var repeatCount = config.RepeatCount;
+        if (ImGui.InputInt("完成 X 场停止", ref repeatCount))
+        {
+            config.RepeatCount = Math.Max(0, repeatCount);
+            config.Save();
+        }
+        DrawSettingTooltip("完成指定场数并关闭结算后停止自动流程。设置为 0 时不限制场数，会持续循环。");
+        ImGui.SameLine();
+        if (controller.IsFullFlowRunning)
+            ImGui.TextDisabled($"当前第 {controller.CompletedRunCount + 1} 场");
+        else if (controller.CompletedRunCount > 0)
+            ImGui.TextDisabled($"已完成 {controller.CompletedRunCount} 场");
+        else
+            ImGui.TextDisabled("尚未开始");
 
     }
 

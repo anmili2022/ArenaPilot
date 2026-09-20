@@ -6,7 +6,7 @@ public static class FourthArenaRoute
 {
     // 高段第一盘固定路线：0 → 1 → 3 → 4 → 5 → 7 → 9 → 11 → 13 → 14。
     // 节点 2 已收录但不在当前自动路线；节点 6、8、10、12 仅展示，等待实测坐标。
-    // 节点 3、6、7、8、12 为随机节点。
+    // 节点 3、6、8、12 为随机节点；节点 7 为战斗节点。
     public static ArenaStageRoute Route { get; } = new()
     {
         StageId = 4,
@@ -23,7 +23,7 @@ public static class FourthArenaRoute
             new(4, new Vector3(-699.92f, 0f, -23.86f), [5, 6], ArenaNodeKind.Shop),
             new(5, new Vector3(-704.86f, 0f, -31.34f), [7], ArenaNodeKind.Rest),
             new(6, new Vector3(-695.00f, 0f, -31.34f), [7], ArenaNodeKind.Random, false),
-            new(7, new Vector3(-700.08f, 0f, -38.98f), [8, 9], ArenaNodeKind.Random),
+            new(7, new Vector3(-700.08f, 0f, -38.98f), [8, 9], ArenaNodeKind.Battle),
             new(8, new Vector3(-705.00f, 0f, -46.56f), [10], ArenaNodeKind.Random, false),
             new(9, new Vector3(-694.96f, 0f, -46.56f), [11], ArenaNodeKind.Treasure),
             new(10, new Vector3(-705.00f, 0f, -55.49f), [12], ArenaNodeKind.Battle, false),

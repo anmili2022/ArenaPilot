@@ -19,7 +19,7 @@ public sealed class ArenaController
     private static readonly TimeSpan FullFlowTimeout = TimeSpan.FromMinutes(45);
     private static readonly TimeSpan NodeEventTimeout = TimeSpan.FromSeconds(12);
     private static readonly string Version = typeof(ArenaController).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.3";
+        .GetName().Version?.ToString(4) ?? "0.2.4.5";
 
     private readonly ArenaUiReader reader;
     private readonly SnapshotExporter exporter;
@@ -73,6 +73,7 @@ public sealed class ArenaController
     private ArenaStageRoute? currentRoute;
     private bool waitingForAreaExit;
     private bool wasInResult;
+    private int completedRuns;
     private DateTime nextShopCatalogScanUtc;
     private int shopCatalogScrollSlot;
     private int shopCatalogAwaitingSlot = -1;
@@ -85,6 +86,8 @@ public sealed class ArenaController
     public string DiagnosticsDirectory { get; }
     public string ShopCatalogPath => shopCatalogCollector.FilePath;
     public int ShopCatalogCount => shopCatalogCollector.Count;
+    public int CompletedRunCount => completedRuns;
+    public bool IsFullFlowRunning => fullFlow;
     public int? PreviousNode { get; private set; }
     public int? TargetNode => targetNode;
     public string CurrentRouteName => currentRoute?.Name ?? "未识别";
@@ -188,6 +191,7 @@ public sealed class ArenaController
         if (fullFlow || assigningParty || startingBattle)
             return;
 
+        completedRuns = 0;
         RefreshSnapshot();
         ResetFullFlow(entered: false);
         nextFullFlowActionUtc = DateTime.UtcNow;
@@ -209,6 +213,7 @@ public sealed class ArenaController
         if (fullFlow || assigningParty || startingBattle)
             return;
 
+        completedRuns = 0;
         RefreshSnapshot();
         if (currentRoute == null)
         {
@@ -338,9 +343,9 @@ public sealed class ArenaController
             return;
         }
 
-        var missing = config.FlutePetNames.Where(name => members.All(x => x.Name != name)).ToArray();
+        var missing = config.FlutePetIds.Where(petId => members.All(x => x.PetId != petId)).ToArray();
         PreparationCheck = missing.Length > 0
-            ? $"准备未完成：缺少 {string.Join("、", missing)}"
+            ? $"准备未完成：缺少 {string.Join("、", missing.Select(x => PetCatalog.GetName((int)x)))}"
             : PartySetupAction.IsComplete(members, config)
                 ? $"准备检查通过：1、2、3号兽笛分别为{string.Join("、", config.FlutePetNames)}"
                 : "所需魔兽齐全，但兽笛顺序尚未设置完成";
@@ -357,10 +362,10 @@ public sealed class ArenaController
             PartyActionStatus = $"无法开始：{error}";
             return;
         }
-        var missing = config.FlutePetNames.Where(name => members.All(x => x.Name != name || x.Hp == 0)).ToArray();
+        var missing = config.FlutePetIds.Where(petId => members.All(x => x.PetId != petId || x.Hp == 0)).ToArray();
         if (missing.Length > 0)
         {
-            PartyActionStatus = $"无法开始：缺少存活的 {string.Join("、", missing)}";
+            PartyActionStatus = $"无法开始：缺少存活的 {string.Join("、", missing.Select(x => PetCatalog.GetName((int)x)))}";
             return;
         }
         if (PartySetupAction.IsComplete(members, config))
@@ -580,12 +585,7 @@ public sealed class ArenaController
 
         if (wasInResult && LastSnapshot.Phase != ArenaPhase.Result)
         {
-            wasInResult = false;
-            resultSeenAtUtc = DateTime.MinValue;
-            ResetFullFlow(entered: false);
-            waitingForAreaExit = true;
-            FullFlowStatus = "结算已关闭，等待离开副本区域";
-            nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+            HandleResultClosed();
             return;
         }
 
@@ -703,12 +703,7 @@ public sealed class ArenaController
 
             if (!LastSnapshot.Addons.Any(x => x.Name == "XBMResult" && x.IsReady))
             {
-                FullFlowStatus = "结算已关闭，等待离开副本区域";
-                resultSeenAtUtc = DateTime.MinValue;
-                resultNextPageAtUtc = DateTime.MinValue;
-                ResetFullFlow(entered: false);
-                waitingForAreaExit = true;
-                nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                HandleResultClosed();
                 return;
             }
             FullFlowStatus = "正在关闭斗兽结算界面";
@@ -1554,6 +1549,27 @@ public sealed class ArenaController
             DalamudApi.Log.Information("Arena full flow finished: {Reason}.", reason);
         else
             DalamudApi.Log.Warning("Arena full flow stopped: {Reason}.", reason);
+    }
+
+    private void HandleResultClosed()
+    {
+        wasInResult = false;
+        resultSeenAtUtc = DateTime.MinValue;
+        resultNextPageAtUtc = DateTime.MinValue;
+        completedRuns++;
+        if (config.RepeatCount > 0 && completedRuns >= config.RepeatCount)
+        {
+            Phase = ArenaPhase.Completed;
+            StopFullFlow($"已完成 {completedRuns} 场，达到设置上限");
+            return;
+        }
+
+        ResetFullFlow(entered: false);
+        waitingForAreaExit = true;
+        FullFlowStatus = config.RepeatCount > 0
+            ? $"已完成 {completedRuns}/{config.RepeatCount} 场，等待离开副本区域"
+            : $"已完成 {completedRuns} 场，等待离开副本区域";
+        nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
     }
 
     private static bool HasBlockingArenaAddon(ArenaSnapshot snapshot)

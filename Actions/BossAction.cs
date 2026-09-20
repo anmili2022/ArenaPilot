@@ -80,6 +80,13 @@ public static class BossAction
         return true;
     }
 
+    public static void ClearKnownBossTarget()
+    {
+        var target = DalamudApi.TargetManager.Target;
+        if (target != null && BossPriority.Contains(target.BaseId))
+            DalamudApi.TargetManager.Target = null;
+    }
+
     public static float? GetDistanceToBoss(Dalamud.Game.ClientState.Objects.Types.ICharacter player)
     {
         var boss = FindBoss();
