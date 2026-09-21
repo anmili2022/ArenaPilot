@@ -91,7 +91,11 @@ public static class TreasureAction
             .Where(x => !string.IsNullOrWhiteSpace(x.Text))
             .Select(x => x.Text));
         return text.Contains("超出可持有上限", StringComparison.Ordinal)
-            || text.Contains("逐个挑选获取", StringComparison.Ordinal);
+            || text.Contains("逐个挑选获取", StringComparison.Ordinal)
+            || text.Contains("所持上限", StringComparison.Ordinal)
+            || text.Contains("個別", StringComparison.Ordinal)
+            || text.Contains("carrying capacity", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("select individually", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<TreasureCandidate> ReadCandidates(

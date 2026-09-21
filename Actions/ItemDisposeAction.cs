@@ -26,8 +26,11 @@ public static class ItemDisposeAction
             return false;
         }
         targetItemId = (uint)targetRaw;
-        isPurchase = values.TryGetValue(1, out var prompt)
-            && prompt.Text?.Contains("想购买", StringComparison.Ordinal) == true;
+        isPurchase = snapshot.Addons.Any(x => x.Name == "XBMContentsItemShop" && x.IsReady)
+            || values.TryGetValue(1, out var prompt)
+                && (prompt.Text?.Contains("想购买", StringComparison.Ordinal) == true
+                    || prompt.Text?.Contains("購入", StringComparison.Ordinal) == true
+                    || prompt.Text?.Contains("purchase", StringComparison.OrdinalIgnoreCase) == true);
 
         var result = new List<DisposeItemSlot>();
         for (var slot = 0; slot < 10; slot++)

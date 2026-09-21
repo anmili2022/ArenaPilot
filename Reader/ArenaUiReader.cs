@@ -156,7 +156,7 @@ public sealed class ArenaUiReader
                 return (ArenaPhase.PartySetup, "正在编队准备战斗");
             if (Has("XBMPetParty") && route?.GetKind(currentNode) == ArenaNodeKind.Rest)
                 return (ArenaPhase.Rest, "正在处理休息帐篷");
-            if (Has("XBMPetParty") && IsRestAddon(addonSnapshots))
+            if (Has("XBMPetParty") && !Has("XBMStageDetailList"))
                 return (ArenaPhase.Rest, "正在处理休息帐篷");
             if (Has("XBMPetParty") && (IsConditionActive(31) || IsConditionActive(33)))
                 return (ArenaPhase.PartySetup, "正在编队或处理休息界面");
@@ -182,15 +182,17 @@ public sealed class ArenaUiReader
         return (ArenaPhase.Unknown, "当前不是已识别的斗兽界面");
     }
 
-    private static bool IsRestAddon(IReadOnlyList<ArenaAddonSnapshot> addons)
-        => addons.FirstOrDefault(x => x.Name == "XBMPetParty" && x.IsReady)
-            ?.Values.Any(x => x.Index == 1166 && x.Text == "休息") == true;
-
     public static bool TryFindShopAddon(IReadOnlyList<ArenaAddonSnapshot> addons, out string name)
     {
         var shop = addons.FirstOrDefault(x => x.IsReady && x.Values.Any(v =>
             v.Text?.Contains("请选择要购买的临时道具", StringComparison.Ordinal) == true
-            || v.Text?.Contains("可以贩卖当前持有的道具", StringComparison.Ordinal) == true));
+            || v.Text?.Contains("可以贩卖当前持有的道具", StringComparison.Ordinal) == true
+            || v.Text?.Contains("請選擇要購買的臨時道具", StringComparison.Ordinal) == true
+            || v.Text?.Contains("可以販賣當前持有的道具", StringComparison.Ordinal) == true
+            || v.Text?.Contains("購入", StringComparison.Ordinal) == true
+            || v.Text?.Contains("売却", StringComparison.Ordinal) == true
+            || v.Text?.Contains("purchase", StringComparison.OrdinalIgnoreCase) == true
+            || v.Text?.Contains("sell", StringComparison.OrdinalIgnoreCase) == true));
         name = shop?.Name ?? string.Empty;
         return shop != null;
     }

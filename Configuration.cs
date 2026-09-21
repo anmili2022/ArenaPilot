@@ -48,7 +48,7 @@ public sealed class Configuration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 9;
+    public int Version { get; set; } = 10;
     public string SelectedStageKey { get; set; } = string.Empty;
     public bool DiagnosticsEnabled { get; set; } = true;
     public int RepeatCount { get; set; }
@@ -56,7 +56,7 @@ public sealed class Configuration : IPluginConfiguration
     public bool SkipRest { get; set; }
     public bool AutoTargetBoss { get; set; }
     public bool AutoApproach { get; set; }
-    public string CountdownCommand { get; set; } = "/驯兽师 倒计时 10";
+    public string CountdownCommand { get; set; } = "/beastmaster countdown 10";
     public bool AutoCollectShopItems { get; set; }
     public int TargetStage { get; set; } = 1;
     public int Flute1PetId { get; set; } = 16;
@@ -132,6 +132,12 @@ public sealed class Configuration : IPluginConfiguration
         {
             RepeatCount = 0;
             Version = 9;
+            changed = true;
+        }
+        if (Version < 10)
+        {
+            CountdownCommand = "/beastmaster countdown 10";
+            Version = 10;
             changed = true;
         }
 

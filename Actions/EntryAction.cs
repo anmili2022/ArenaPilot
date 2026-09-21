@@ -18,7 +18,13 @@ public static class EntryAction
             return false;
         }
 
-        var buttonNode = AddonUi.FindButtonNodeByText(&addon->UldManager, "出发", 0);
+        AtkResNode* buttonNode = null;
+        foreach (var label in new[] { "出发", "出發", "突入", "Commence" })
+        {
+            buttonNode = AddonUi.FindButtonNodeByText(&addon->UldManager, label, 0);
+            if (buttonNode != null)
+                break;
+        }
         if (buttonNode == null || (int)buttonNode->Type < 1000 || !buttonNode->IsVisible())
         {
             error = "出发按钮当前不可用";
@@ -98,10 +104,19 @@ public static class EntryAction
             return true;
         if (TryClickEntryMenu("斗兽奇弈", out error))
             return true;
+        if (TryClickEntryMenu("鬥獸奇弈", out error))
+            return true;
+        if (TryClickEntryMenu("挑戰「鬥獸奇奕」", out error))
+            return true;
+        if (TryClickEntryMenuContains("闘獣練", out error))
+            return true;
+        if (TryClickEntryMenuContains("Crucible of the Unbroken", out error))
+            return true;
 
         var npc = DalamudApi.ObjectTable
             .OfType<IGameObject>()
-            .FirstOrDefault(x => x.Name.TextValue == "劳妲" && x.IsTargetable);
+            .FirstOrDefault(x => new[] { "劳妲", "勞妲", "ラウダ", "Lauda" }
+                .Contains(x.Name.TextValue, StringComparer.OrdinalIgnoreCase) && x.IsTargetable);
         var player = DalamudApi.ObjectTable.LocalPlayer;
         if (npc == null)
         {
@@ -152,6 +167,45 @@ public static class EntryAction
             if (!string.Equals(Normalize(actual), Normalize(expected), StringComparison.Ordinal))
                 continue;
             if (list->GetItemDisabledState(row) || !list->IsItemInteractionEnabled)
+            {
+                error = $"入口选项“{expected}”当前不可用";
+                return false;
+            }
+            list->SelectItem(row, false);
+            list->DispatchItemEvent(row, AtkEventType.ListItemClick);
+            error = string.Empty;
+            return true;
+        }
+        error = $"入口菜单中没有找到“{expected}”";
+        return false;
+    }
+
+    private static unsafe bool TryClickEntryMenuContains(string expected, out string error)
+    {
+        var icon = AddonUi.GetReady("SelectIconString");
+        var text = AddonUi.GetReady("SelectString");
+        var addon = icon != null ? icon : text;
+        if (addon == null || (icon != null && text != null))
+        {
+            error = "入口菜单尚未出现";
+            return false;
+        }
+
+        var list = addon->GetComponentListById(3);
+        if (list == null || list->IsUpdatePending || !list->IsItemInteractionEnabled)
+        {
+            error = "入口菜单尚未加载完成";
+            return false;
+        }
+        for (var row = 0; row < list->ListLength; row++)
+        {
+            var label = list->GetItemLabel(row);
+            if (label.Value == null)
+                continue;
+            var actual = new ReadOnlySeStringSpan(label.Value).ExtractText();
+            if (!actual.Contains(expected, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (list->GetItemDisabledState(row))
             {
                 error = $"入口选项“{expected}”当前不可用";
                 return false;

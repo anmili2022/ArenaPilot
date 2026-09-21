@@ -19,7 +19,7 @@ public sealed class ArenaController
     private static readonly TimeSpan FullFlowTimeout = TimeSpan.FromMinutes(45);
     private static readonly TimeSpan NodeEventTimeout = TimeSpan.FromSeconds(12);
     private static readonly string Version = typeof(ArenaController).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.5";
+        .GetName().Version?.ToString(4) ?? "0.2.4.6";
 
     private readonly ArenaUiReader reader;
     private readonly SnapshotExporter exporter;
@@ -589,16 +589,12 @@ public sealed class ArenaController
             return;
         }
 
-        var promptText = PromptAction.ReadText(LastSnapshot);
-        if (PromptAction.TryHandle(LastSnapshot, out var promptStatus))
+        if (PromptAction.TryHandle(LastSnapshot, challengeSent, out var promptStatus))
         {
-            var compactPrompt = string.Concat((promptText ?? string.Empty).Where(x => !char.IsWhiteSpace(x)));
-            if (compactPrompt.Contains("只让玩家休息", StringComparison.Ordinal)
-                && compactPrompt.Contains("恢复", StringComparison.Ordinal)
-                && compactPrompt.Contains("体力", StringComparison.Ordinal))
+            if (LastSnapshot.Phase == ArenaPhase.Rest)
                 restConfirmed = true;
-            if (PartySetupAction.IsUnderfilledChallengePrompt(LastSnapshot)
-                || PromptAction.ReadText(LastSnapshot)?.Contains("魔兽未满") == true)
+            if (LastSnapshot.Phase is (ArenaPhase.PartySetup or ArenaPhase.Entry)
+                && challengeSent)
                 challengeConfirmed = true;
             FullFlowStatus = promptStatus;
             nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
@@ -613,8 +609,11 @@ public sealed class ArenaController
             return;
         }
 
+        var treasureItemCapacityPopup = LastSnapshot.Phase == ArenaPhase.Treasure
+            && LastSnapshot.VisibleAddons.Contains("SelectOk", StringComparer.Ordinal)
+            && pendingTreasureItemId is >= 76 and <= 143;
         if (LastSnapshot.Phase != ArenaPhase.Loot
-            && TreasureAction.IsCapacityPopup(LastSnapshot))
+            && (treasureItemCapacityPopup || TreasureAction.IsCapacityPopup(LastSnapshot)))
         {
             if (!TreasureAction.TryDismissPopup(out var capacityError))
             {
@@ -755,7 +754,7 @@ public sealed class ArenaController
                 return;
             }
 
-            if (isPurchase)
+            if (isPurchase || shopPendingAction == ShopPendingAction.Buy)
             {
                 FullFlowStatus = "商店购买意外进入直接替换界面，等待返回商店后先出售旧道具";
                 nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);

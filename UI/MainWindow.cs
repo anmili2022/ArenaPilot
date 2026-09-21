@@ -7,7 +7,7 @@ namespace ArenaPilot;
 public sealed class MainWindow
 {
     private static readonly string Version = typeof(MainWindow).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.5";
+        .GetName().Version?.ToString(4) ?? "0.2.4.6";
 
     private readonly ArenaController controller;
     private readonly Configuration config;
@@ -391,7 +391,7 @@ public sealed class MainWindow
             config.CountdownCommand = countdownCommand;
             config.Save();
         }
-        DrawSettingTooltip("自动接近 BOSS 后发送的游戏指令，默认 /驯兽师 倒计时 10。留空时不会发送倒计时指令。");
+        DrawSettingTooltip("自动接近 BOSS 后发送的游戏指令，默认 /beastmaster countdown 10。留空时不会发送倒计时指令。");
     }
 
     private void DrawStrategyConfig()

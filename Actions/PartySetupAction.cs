@@ -110,16 +110,10 @@ public static class PartySetupAction
     }
 
     public static bool IsUnderfilledChallengePrompt(ArenaSnapshot snapshot)
-    {
-        var prompt = snapshot.Addons.FirstOrDefault(x => x.Name == "SelectYesno" && x.IsReady);
-        return prompt?.Values.Any(x => x.Text?.Contains("魔兽未满", StringComparison.Ordinal) == true) == true;
-    }
+        => snapshot.Addons.Any(x => x.Name == "SelectYesno" && x.IsReady);
 
     public static bool IsUnassignedFlutePrompt(ArenaSnapshot snapshot)
-    {
-        var prompt = snapshot.Addons.FirstOrDefault(x => x.Name == "SelectYesno" && x.IsReady);
-        return prompt?.Values.Any(x => x.Text?.Contains("兽笛未设置魔兽", StringComparison.Ordinal) == true) == true;
-    }
+        => snapshot.Addons.Any(x => x.Name == "SelectYesno" && x.IsReady);
 
     public static bool TryStartBattle(out string error)
         => BattleAction.TryStartBattle(out error);
