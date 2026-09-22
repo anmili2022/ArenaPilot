@@ -50,7 +50,9 @@ public static class PartySetupAction
 
     public static bool IsComplete(IReadOnlyList<ArenaPartyMember> members, Configuration config)
     {
-        var petIds = config.FlutePetIds;
+        if (!TryGetBattlePetIds(members, config, out var petIds, out _))
+            return false;
+
         return petIds.Select((petId, slot) => members.Any(x =>
             x.PetId == petId
             && x.Slot == slot
@@ -62,7 +64,10 @@ public static class PartySetupAction
 
     public static ArenaPartyMember? NextToAssign(IReadOnlyList<ArenaPartyMember> members, Configuration config)
     {
-        var desired = config.FlutePetIds
+        if (!TryGetBattlePetIds(members, config, out var desiredIds, out _))
+            return null;
+
+        var desired = desiredIds
             .Select(petId => members.FirstOrDefault(x => x.PetId == petId && x.Hp > 0))
             .ToArray();
         if (desired.Any(x => x == null))
@@ -78,6 +83,50 @@ public static class PartySetupAction
             .Where(x => x.Slot is >= 0 and < 3 && x.Slot >= prefix)
             .OrderByDescending(x => x.Slot)
             .FirstOrDefault() ?? desired[prefix];
+    }
+
+    public static bool TryGetBattlePetIds(
+        IReadOnlyList<ArenaPartyMember> members,
+        Configuration config,
+        out uint[] petIds,
+        out string error)
+    {
+        petIds = new uint[config.FlutePetIds.Length];
+        var used = new HashSet<uint>();
+        var configured = config.FlutePetIds;
+
+        for (var slot = 0; slot < configured.Length; slot++)
+        {
+            var configuredPet = members.FirstOrDefault(x => x.PetId == configured[slot]);
+            if (configuredPet == null)
+            {
+                error = $"缺少配置的 {PetCatalog.GetName((int)configured[slot])}";
+                return false;
+            }
+
+            if (configuredPet.Hp > 0 && used.Add(configured[slot]))
+            {
+                petIds[slot] = configured[slot];
+                continue;
+            }
+
+            var replacement = members
+                .Where(x => x.Hp > 0 && !used.Contains(x.PetId))
+                .OrderBy(x => x.Slot == 3 ? 0 : 1)
+                .ThenBy(x => x.Row)
+                .FirstOrDefault();
+            if (replacement == null)
+            {
+                error = $"{PetCatalog.GetName((int)configured[slot])} 已死亡，且没有存活的替补魔兽";
+                return false;
+            }
+
+            used.Add(replacement.PetId);
+            petIds[slot] = replacement.PetId;
+        }
+
+        error = string.Empty;
+        return true;
     }
 
     public static unsafe bool TryClickRow(int row, out string error)

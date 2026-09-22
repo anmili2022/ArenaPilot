@@ -19,7 +19,7 @@ public sealed class ArenaController
     private static readonly TimeSpan FullFlowTimeout = TimeSpan.FromMinutes(45);
     private static readonly TimeSpan NodeEventTimeout = TimeSpan.FromSeconds(12);
     private static readonly string Version = typeof(ArenaController).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.6";
+        .GetName().Version?.ToString(4) ?? "0.2.4.7";
 
     private readonly ArenaUiReader reader;
     private readonly SnapshotExporter exporter;
@@ -343,12 +343,15 @@ public sealed class ArenaController
             return;
         }
 
-        var missing = config.FlutePetIds.Where(petId => members.All(x => x.PetId != petId)).ToArray();
-        PreparationCheck = missing.Length > 0
-            ? $"准备未完成：缺少 {string.Join("、", missing.Select(x => PetCatalog.GetName((int)x)))}"
-            : PartySetupAction.IsComplete(members, config)
-                ? $"准备检查通过：1、2、3号兽笛分别为{string.Join("、", config.FlutePetNames)}"
-                : "所需魔兽齐全，但兽笛顺序尚未设置完成";
+        if (!PartySetupAction.TryGetBattlePetIds(members, config, out var battlePetIds, out var partyError))
+        {
+            PreparationCheck = $"准备未完成：{partyError}";
+            return;
+        }
+
+        PreparationCheck = PartySetupAction.IsComplete(members, config)
+            ? $"准备检查通过：1、2、3号兽笛分别为{string.Join("、", battlePetIds.Select(x => PetCatalog.GetName((int)x)))}"
+            : "所需魔兽齐全，但兽笛顺序尚未设置完成";
     }
 
     public void StartPartyAssignment()
@@ -362,10 +365,9 @@ public sealed class ArenaController
             PartyActionStatus = $"无法开始：{error}";
             return;
         }
-        var missing = config.FlutePetIds.Where(petId => members.All(x => x.PetId != petId || x.Hp == 0)).ToArray();
-        if (missing.Length > 0)
+        if (!PartySetupAction.TryGetBattlePetIds(members, config, out _, out var partyError))
         {
-            PartyActionStatus = $"无法开始：缺少存活的 {string.Join("、", missing.Select(x => PetCatalog.GetName((int)x)))}";
+            PartyActionStatus = $"无法开始：{partyError}";
             return;
         }
         if (PartySetupAction.IsComplete(members, config))
