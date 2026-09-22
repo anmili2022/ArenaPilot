@@ -7,7 +7,7 @@ namespace ArenaPilot;
 public sealed class MainWindow
 {
     private static readonly string Version = typeof(MainWindow).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.7";
+        .GetName().Version?.ToString(4) ?? "0.2.4.8";
 
     private readonly ArenaController controller;
     private readonly Configuration config;

@@ -100,17 +100,7 @@ public static class EntryAction
             return true;
         }
 
-        if (TryClickEntryMenu("挑战“斗兽奇弈”", out error))
-            return true;
-        if (TryClickEntryMenu("斗兽奇弈", out error))
-            return true;
-        if (TryClickEntryMenu("鬥獸奇弈", out error))
-            return true;
-        if (TryClickEntryMenu("挑戰「鬥獸奇奕」", out error))
-            return true;
-        if (TryClickEntryMenuContains("闘獣練", out error))
-            return true;
-        if (TryClickEntryMenuContains("Crucible of the Unbroken", out error))
+        if (TryClickEntryMenu(out error))
             return true;
 
         var npc = DalamudApi.ObjectTable
@@ -141,7 +131,7 @@ public static class EntryAction
         return true;
     }
 
-    private static unsafe bool TryClickEntryMenu(string expected, out string error)
+    private static unsafe bool TryClickEntryMenu(out string error)
     {
         var icon = AddonUi.GetReady("SelectIconString");
         var text = AddonUi.GetReady("SelectString");
@@ -158,67 +148,65 @@ public static class EntryAction
             error = "入口菜单尚未加载完成";
             return false;
         }
+
+        var labels = new List<string>((int)list->ListLength);
+        var match = -1;
+        var exclusion = string.Empty;
         for (var row = 0; row < list->ListLength; row++)
         {
             var label = list->GetItemLabel(row);
             if (label.Value == null)
                 continue;
             var actual = new ReadOnlySeStringSpan(label.Value).ExtractText();
-            if (!string.Equals(Normalize(actual), Normalize(expected), StringComparison.Ordinal))
-                continue;
-            if (list->GetItemDisabledState(row) || !list->IsItemInteractionEnabled)
+            labels.Add(actual);
+            if (IsEntryMenuExcluded(actual))
             {
-                error = $"入口选项“{expected}”当前不可用";
-                return false;
+                exclusion = actual;
+                continue;
             }
-            list->SelectItem(row, false);
-            list->DispatchItemEvent(row, AtkEventType.ListItemClick);
-            error = string.Empty;
-            return true;
+            if (match < 0 && IsEntryMenuTarget(actual))
+                match = (int)row;
         }
-        error = $"入口菜单中没有找到“{expected}”";
-        return false;
-    }
 
-    private static unsafe bool TryClickEntryMenuContains(string expected, out string error)
-    {
-        var icon = AddonUi.GetReady("SelectIconString");
-        var text = AddonUi.GetReady("SelectString");
-        var addon = icon != null ? icon : text;
-        if (addon == null || (icon != null && text != null))
+        if (match < 0)
         {
-            error = "入口菜单尚未出现";
+            var dump = labels.Count > 0 ? string.Join(" / ", labels) : "（空）";
+            error = exclusion.Length > 0
+                ? $"入口菜单只识别到“{exclusion}”等非进入项，当前无可点击的进入项：{dump}"
+                : $"入口菜单中没有找到进入项：{dump}";
+            return false;
+        }
+        if (list->GetItemDisabledState(match) || !list->IsItemInteractionEnabled)
+        {
+            error = $"入口选项“{labels[match]}”当前不可用";
             return false;
         }
 
-        var list = addon->GetComponentListById(3);
-        if (list == null || list->IsUpdatePending || !list->IsItemInteractionEnabled)
-        {
-            error = "入口菜单尚未加载完成";
-            return false;
-        }
-        for (var row = 0; row < list->ListLength; row++)
-        {
-            var label = list->GetItemLabel(row);
-            if (label.Value == null)
-                continue;
-            var actual = new ReadOnlySeStringSpan(label.Value).ExtractText();
-            if (!actual.Contains(expected, StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (list->GetItemDisabledState(row))
-            {
-                error = $"入口选项“{expected}”当前不可用";
-                return false;
-            }
-            list->SelectItem(row, false);
-            list->DispatchItemEvent(row, AtkEventType.ListItemClick);
-            error = string.Empty;
-            return true;
-        }
-        error = $"入口菜单中没有找到“{expected}”";
-        return false;
+        list->SelectItem(match, false);
+        list->DispatchItemEvent(match, AtkEventType.ListItemClick);
+        error = string.Empty;
+        return true;
     }
 
-    private static string Normalize(string text)
-        => string.Concat(text.Where(x => !char.IsWhiteSpace(x)));
+    private static bool IsEntryMenuTarget(string label)
+        => EntryMenuTargets.Any(x => label.Contains(x, StringComparison.OrdinalIgnoreCase));
+
+    public static bool IsEntryMenuExcluded(string label)
+        => EntryMenuExclusions.Any(x => label.Contains(x, StringComparison.OrdinalIgnoreCase));
+
+    private static readonly string[] EntryMenuTargets =
+    [
+        "挑战“斗兽奇弈”", "斗兽奇弈", "鬥獸奇弈", "挑戰「鬥獸奇奕」", // 简中、繁中
+        "闘獣練", "この盤面に挑む", "盤面に挑", // 日文
+        "Challenge this board", "Crucible of the Unbroken", // 英文
+    ];
+
+    private static readonly string[] EntryMenuExclusions =
+    [
+        "中断", "再開", // 中断数据继续，不自动点击
+        "魔獣図鑑", "魔物图鉴", "魔物圖鑑", "图鉴", "圖鑑", // 图鉴
+        "について聞く", "聞く", "询问", "詢問", // 询问说明
+        "話す", "对话", "對話", // 交谈
+        "キャンセル", "取消", // 取消
+    ];
 }

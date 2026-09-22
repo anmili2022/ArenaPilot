@@ -11,7 +11,7 @@ public static class RestAction
 
     public static bool TryRest(out string error)
     {
-        foreach (var label in new[] { "休息", "休憩", "休む", "Rest", "Take a Rest" })
+        foreach (var label in new[] { "休息", "休憩", "休息する", "休む", "Rest", "Take a Rest" })
         {
             if (AddonUi.TryClickButtonByText("XBMPetParty", label, out error))
                 return true;
