@@ -53,6 +53,11 @@ public static class PartySetupAction
         if (!TryGetBattlePetIds(members, config, out var petIds, out _))
             return false;
 
+        return IsComplete(members, petIds);
+    }
+
+    public static bool IsComplete(IReadOnlyList<ArenaPartyMember> members, IReadOnlyList<uint> petIds)
+    {
         return petIds.Select((petId, slot) => members.Any(x =>
             x.PetId == petId
             && x.Slot == slot
@@ -67,6 +72,13 @@ public static class PartySetupAction
         if (!TryGetBattlePetIds(members, config, out var desiredIds, out _))
             return null;
 
+        return NextToAssign(members, desiredIds);
+    }
+
+    public static ArenaPartyMember? NextToAssign(
+        IReadOnlyList<ArenaPartyMember> members,
+        IReadOnlyList<uint> desiredIds)
+    {
         var desired = desiredIds
             .Select(petId => members.FirstOrDefault(x => x.PetId == petId && x.Hp > 0))
             .ToArray();
@@ -94,6 +106,10 @@ public static class PartySetupAction
         petIds = new uint[config.FlutePetIds.Length];
         var used = new HashSet<uint>();
         var configured = config.FlutePetIds;
+        var reserved = members
+            .Where(x => x.Hp > 0 && configured.Contains(x.PetId))
+            .Select(x => x.PetId)
+            .ToHashSet();
 
         for (var slot = 0; slot < configured.Length; slot++)
         {
@@ -111,7 +127,7 @@ public static class PartySetupAction
             }
 
             var replacement = members
-                .Where(x => x.Hp > 0 && !used.Contains(x.PetId))
+                .Where(x => x.Hp > 0 && !reserved.Contains(x.PetId) && !used.Contains(x.PetId))
                 .OrderBy(x => x.Slot == 3 ? 0 : 1)
                 .ThenBy(x => x.Row)
                 .FirstOrDefault();
