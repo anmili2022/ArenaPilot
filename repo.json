@@ -5,7 +5,7 @@
     "Description": "自动执行已支持的斗兽奇弈流程，包括入场、编队、路线导航、战斗准备、奖励领取、休息、宝箱、商店和最终结算。",
     "InternalName": "ArenaPilot",
     "IconUrl": "https://raw.githubusercontent.com/anmili2022/ArenaPilot/main/images/icon.png?v=1",
-    "AssemblyVersion": "0.2.4.9",
+    "AssemblyVersion": "0.2.4.10",
     "RepoUrl": "https://github.com/anmili2022/ArenaPilot",
     "ApplicableVersion": "any",
     "DalamudApiLevel": 15,
@@ -16,9 +16,9 @@
     ],
     "IsHide": false,
     "IsTestingExclusive": false,
-    "DownloadLinkInstall": "https://github.com/anmili2022/ArenaPilot/releases/download/0.2.4.9/ArenaPilot.zip",
-    "DownloadLinkTesting": "https://github.com/anmili2022/ArenaPilot/releases/download/0.2.4.9/ArenaPilot.zip",
-    "DownloadLinkUpdate": "https://github.com/anmili2022/ArenaPilot/releases/download/0.2.4.9/ArenaPilot.zip",
+    "DownloadLinkInstall": "https://github.com/anmili2022/ArenaPilot/releases/download/0.2.4.10/ArenaPilot.zip",
+    "DownloadLinkTesting": "https://github.com/anmili2022/ArenaPilot/releases/download/0.2.4.10/ArenaPilot.zip",
+    "DownloadLinkUpdate": "https://github.com/anmili2022/ArenaPilot/releases/download/0.2.4.10/ArenaPilot.zip",
     "LastUpdated": "2026-09-23T00:00:00Z"
   }
 ]

@@ -14,6 +14,7 @@ public static class ArenaRoutes
     public static IReadOnlyList<ArenaStageRoute> All { get; } =
     [
         FirstArenaRoute.Route,
+        SecondArenaRoute.Route,
         ThirdArenaRoute.Route,
         FourthArenaRoute.Route,
         FifthArenaRoute.Route,

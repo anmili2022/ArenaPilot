@@ -19,7 +19,7 @@ public sealed class ArenaController
     private static readonly TimeSpan FullFlowTimeout = TimeSpan.FromMinutes(45);
     private static readonly TimeSpan NodeEventTimeout = TimeSpan.FromSeconds(12);
     private static readonly string Version = typeof(ArenaController).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.9";
+        .GetName().Version?.ToString(4) ?? "0.2.4.10";
 
     private readonly ArenaUiReader reader;
     private readonly SnapshotExporter exporter;

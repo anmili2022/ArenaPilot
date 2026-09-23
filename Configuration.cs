@@ -50,7 +50,7 @@ public sealed class Configuration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 11;
+    public int Version { get; set; } = 14;
     public string SelectedStageKey { get; set; } = string.Empty;
     public bool DiagnosticsEnabled { get; set; } = true;
     public int RepeatCount { get; set; }
@@ -87,6 +87,7 @@ public sealed class Configuration : IPluginConfiguration
     {
         this.pluginInterface = pluginInterface;
         CustomRoutes ??= [];
+        BossPriority ??= [];
 
         var changed = false;
         if (Version < 2)
@@ -150,6 +151,40 @@ public sealed class Configuration : IPluginConfiguration
             Version = 11;
             changed = true;
         }
+        if (Version < 12)
+        {
+            var knownBossIds = BossPriority.Select(x => x.Id).ToHashSet();
+            BossPriority.AddRange(BossAction.DefaultPriority.Where(x => knownBossIds.Add(x.Id)));
+            Version = 12;
+            changed = true;
+        }
+        if (Version < 13)
+        {
+            var higherPriorityTargets = BossPriority
+                .Where(x => x.Id is 19748 or 19746)
+                .ToArray();
+            BossPriority.RemoveAll(x => x.Id is 19748 or 19746);
+            var finalBossIndex = BossPriority.FindIndex(x => x.Id == 19626);
+            BossPriority.InsertRange(finalBossIndex >= 0 ? finalBossIndex : BossPriority.Count,
+                higherPriorityTargets);
+            Version = 13;
+            changed = true;
+        }
+        if (Version < 14)
+        {
+            var wrongIdIndex = BossPriority.FindIndex(x => x.Id == 19476);
+            BossPriority.RemoveAll(x => x.Id == 19476);
+            if (BossPriority.All(x => x.Id != 19746))
+            {
+                var finalBossIndex = BossPriority.FindIndex(x => x.Id == 19626);
+                var insertAt = wrongIdIndex >= 0
+                    ? Math.Min(wrongIdIndex, BossPriority.Count)
+                    : finalBossIndex >= 0 ? finalBossIndex : BossPriority.Count;
+                BossPriority.Insert(insertAt, new ArenaBossTarget(19746, "魔刃"));
+            }
+            Version = 14;
+            changed = true;
+        }
 
         changed |= Normalize(ShopPurchasePriority, out var purchase);
         changed |= Normalize(EquipmentPurchasePriority, out var equipmentPurchase);
@@ -157,7 +192,6 @@ public sealed class Configuration : IPluginConfiguration
         ShopPurchasePriority = purchase;
         EquipmentPurchasePriority = equipmentPurchase;
         ProtectedItemIds = protectedItems;
-        BossPriority ??= [];
         var normalizedBosses = BossPriority
             .Where(x => x.Id > 0 && !string.IsNullOrWhiteSpace(x.Name))
             .GroupBy(x => x.Id)
