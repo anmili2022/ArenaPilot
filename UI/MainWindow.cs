@@ -7,7 +7,7 @@ namespace ArenaPilot;
 public sealed class MainWindow
 {
     private static readonly string Version = typeof(MainWindow).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.8";
+        .GetName().Version?.ToString(4) ?? "0.2.4.9";
 
     private readonly ArenaController controller;
     private readonly Configuration config;
@@ -27,6 +27,9 @@ public sealed class MainWindow
     private string purchaseItemSearch = string.Empty;
     private string protectedItemSearch = string.Empty;
     private string itemStrategyMessage = string.Empty;
+    private string bossNameInput = string.Empty;
+    private int bossIdInput;
+    private string bossConfigMessage = string.Empty;
     private readonly Dictionary<int, List<int>> routeDrafts = [];
     private string routeEditMessage = string.Empty;
 
@@ -71,7 +74,7 @@ public sealed class MainWindow
         var territory = controller.LastSnapshot.TerritoryName;
         var territoryId = controller.LastSnapshot.TerritoryId;
         var node = controller.LastSnapshot.CurrentNode;
-        var bossInfo = BossAction.GetBossInfo();
+        var bossInfo = BossAction.GetBossInfo(config.BossPriority);
 
         var phaseColor = phase switch
         {
@@ -243,10 +246,10 @@ public sealed class MainWindow
         {
             config.AutoTargetBoss = a;
             if (!a)
-                BossAction.ClearKnownBossTarget();
+                BossAction.ClearKnownBossTarget(config.BossPriority);
             config.Save();
         }
-        DrawSettingTooltip("启用：战斗准备阶段按已知 BaseId 自动选中当前战斗目标。\n关闭：立即清除本插件已选中的已知 BOSS，之后不再修改目标。其他战斗插件仍可能自行选怪。");
+        DrawSettingTooltip("启用：战斗准备阶段按 BOSS 选择页中的 BaseId 优先级自动选中当前战斗目标。\n关闭：立即清除本插件已选中的已知 BOSS，之后不再修改目标。其他战斗插件仍可能自行选怪。");
         ImGui.SameLine(200f);
 
         a = config.AutoApproach;
@@ -346,6 +349,11 @@ public sealed class MainWindow
                 DrawStrategyConfig();
                 ImGui.EndTabItem();
             }
+            if (ImGui.BeginTabItem("BOSS选择"))
+            {
+                DrawBossConfig();
+                ImGui.EndTabItem();
+            }
             if (ImGui.BeginTabItem("路线选择"))
             {
                 DrawRouteConfig();
@@ -419,6 +427,149 @@ public sealed class MainWindow
             ImGui.EndTabItem();
         }
         ImGui.EndTabBar();
+    }
+
+    private void DrawBossConfig()
+    {
+        ImGui.TextDisabled("列表顺序即自动选中优先级；ID 使用游戏对象 BaseId。");
+        if (ImGui.SmallButton("导出##boss-priority"))
+        {
+            var lines = new List<string> { "优先级,ID,名称" };
+            lines.AddRange(config.BossPriority.Select((boss, index) =>
+                $"{index + 1},{boss.Id},{boss.Name.Replace(',', ' ')}"));
+            ImGui.SetClipboardText(string.Join(Environment.NewLine, lines));
+            bossConfigMessage = $"已导出 {config.BossPriority.Count} 项到剪贴板";
+        }
+        ImGui.SameLine();
+        if (ImGui.SmallButton("导入##boss-priority"))
+        {
+            var imported = ParseImportedBosses(ImGui.GetClipboardText());
+            if (imported.Count == 0)
+                bossConfigMessage = "导入失败：剪贴板中没有有效的 BOSS 名称和 ID";
+            else
+            {
+                config.BossPriority.Clear();
+                config.BossPriority.AddRange(imported);
+                config.Save();
+                bossConfigMessage = $"已导入 {imported.Count} 项";
+            }
+        }
+        ImGui.SameLine();
+        if (ImGui.SmallButton("恢复默认##boss-priority"))
+        {
+            config.BossPriority = [.. BossAction.DefaultPriority];
+            config.Save();
+            bossConfigMessage = $"已恢复默认列表：{config.BossPriority.Count} 项";
+        }
+        if (!string.IsNullOrWhiteSpace(bossConfigMessage))
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled(bossConfigMessage);
+        }
+
+        ImGui.Separator();
+        ImGui.SetNextItemWidth(220f);
+        ImGui.InputTextWithHint("##boss-name", "BOSS 名称", ref bossNameInput, 128);
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(130f);
+        ImGui.InputInt("##boss-id", ref bossIdInput, 0, 0);
+        ImGui.SameLine();
+        if (ImGui.Button("添加##boss-priority"))
+        {
+            var name = bossNameInput.Trim();
+            if (string.IsNullOrWhiteSpace(name) || bossIdInput <= 0)
+                bossConfigMessage = "添加失败：请输入 BOSS 名称和大于 0 的 ID";
+            else if (config.BossPriority.Any(x => x.Id == (uint)bossIdInput))
+                bossConfigMessage = $"添加失败：ID {bossIdInput} 已存在";
+            else
+            {
+                config.BossPriority.Add(new ArenaBossTarget((uint)bossIdInput, name));
+                config.Save();
+                bossConfigMessage = $"已添加 {name} ({bossIdInput})";
+                bossNameInput = string.Empty;
+                bossIdInput = 0;
+            }
+        }
+
+        ImGui.Separator();
+        ImGui.BeginChild("##boss-priority-list", new Vector2(-1f, -1f), true);
+        for (var index = 0; index < config.BossPriority.Count; index++)
+        {
+            var boss = config.BossPriority[index];
+            ImGui.PushID($"boss-{index}-{boss.Id}");
+            ImGui.TextUnformatted($"{index + 1}. {boss.Name} ({boss.Id})");
+            ImGui.SameLine(300f);
+            if (ImGui.SmallButton("置顶") && index > 0)
+            {
+                config.BossPriority.RemoveAt(index);
+                config.BossPriority.Insert(0, boss);
+                config.Save();
+                ImGui.PopID();
+                break;
+            }
+            ImGui.SameLine();
+            if (ImGui.SmallButton("置底") && index < config.BossPriority.Count - 1)
+            {
+                config.BossPriority.RemoveAt(index);
+                config.BossPriority.Add(boss);
+                config.Save();
+                ImGui.PopID();
+                break;
+            }
+            ImGui.SameLine();
+            if (ImGui.SmallButton("上移") && index > 0)
+            {
+                (config.BossPriority[index - 1], config.BossPriority[index]) =
+                    (config.BossPriority[index], config.BossPriority[index - 1]);
+                config.Save();
+                ImGui.PopID();
+                break;
+            }
+            ImGui.SameLine();
+            if (ImGui.SmallButton("下移") && index < config.BossPriority.Count - 1)
+            {
+                (config.BossPriority[index + 1], config.BossPriority[index]) =
+                    (config.BossPriority[index], config.BossPriority[index + 1]);
+                config.Save();
+                ImGui.PopID();
+                break;
+            }
+            ImGui.SameLine();
+            if (ImGui.SmallButton("删除"))
+            {
+                config.BossPriority.RemoveAt(index);
+                config.Save();
+                ImGui.PopID();
+                break;
+            }
+            ImGui.PopID();
+        }
+        ImGui.EndChild();
+    }
+
+    private static IReadOnlyList<ArenaBossTarget> ParseImportedBosses(string text)
+    {
+        var result = new List<ArenaBossTarget>();
+        foreach (var line in text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var fields = line.Split([',', '\t', ';'], StringSplitOptions.TrimEntries);
+            if (fields.Length < 2)
+                continue;
+
+            uint id;
+            string name;
+            if (fields.Length >= 3 && uint.TryParse(fields[1], out id))
+                name = string.Join(" ", fields.Skip(2)).Trim();
+            else if (uint.TryParse(fields[0], out id))
+                name = string.Join(" ", fields.Skip(1)).Trim();
+            else
+                continue;
+
+            if (id == 0 || string.IsNullOrWhiteSpace(name) || result.Any(x => x.Id == id))
+                continue;
+            result.Add(new ArenaBossTarget(id, name));
+        }
+        return result;
     }
 
     private void DrawRouteConfig()

@@ -4,6 +4,8 @@ using Newtonsoft.Json;
 
 namespace ArenaPilot;
 
+public sealed record ArenaBossTarget(uint Id, string Name);
+
 [Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
@@ -48,7 +50,7 @@ public sealed class Configuration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 10;
+    public int Version { get; set; } = 11;
     public string SelectedStageKey { get; set; } = string.Empty;
     public bool DiagnosticsEnabled { get; set; } = true;
     public int RepeatCount { get; set; }
@@ -70,6 +72,8 @@ public sealed class Configuration : IPluginConfiguration
     public List<uint> ProtectedItemIds { get; set; } = [.. DefaultProtectedItemIds];
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public Dictionary<int, List<int>> CustomRoutes { get; set; } = [];
+    [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+    public List<ArenaBossTarget> BossPriority { get; set; } = [.. BossAction.DefaultPriority];
 
     public uint[] FlutePetIds => [(uint)Flute1PetId, (uint)Flute2PetId, (uint)Flute3PetId];
     public string[] FlutePetNames =>
@@ -140,6 +144,12 @@ public sealed class Configuration : IPluginConfiguration
             Version = 10;
             changed = true;
         }
+        if (Version < 11)
+        {
+            BossPriority = [.. BossAction.DefaultPriority];
+            Version = 11;
+            changed = true;
+        }
 
         changed |= Normalize(ShopPurchasePriority, out var purchase);
         changed |= Normalize(EquipmentPurchasePriority, out var equipmentPurchase);
@@ -147,6 +157,15 @@ public sealed class Configuration : IPluginConfiguration
         ShopPurchasePriority = purchase;
         EquipmentPurchasePriority = equipmentPurchase;
         ProtectedItemIds = protectedItems;
+        BossPriority ??= [];
+        var normalizedBosses = BossPriority
+            .Where(x => x.Id > 0 && !string.IsNullOrWhiteSpace(x.Name))
+            .GroupBy(x => x.Id)
+            .Select(x => new ArenaBossTarget(x.Key, x.First().Name.Trim()))
+            .ToList();
+        changed |= normalizedBosses.Count != BossPriority.Count
+            || !normalizedBosses.SequenceEqual(BossPriority);
+        BossPriority = normalizedBosses;
         if (changed)
             Save();
     }

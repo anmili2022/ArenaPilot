@@ -151,6 +151,7 @@ public static class EntryAction
 
         var labels = new List<string>((int)list->ListLength);
         var match = -1;
+        var matchedLabel = string.Empty;
         var exclusion = string.Empty;
         for (var row = 0; row < list->ListLength; row++)
         {
@@ -165,7 +166,10 @@ public static class EntryAction
                 continue;
             }
             if (match < 0 && IsEntryMenuTarget(actual))
+            {
                 match = (int)row;
+                matchedLabel = actual;
+            }
         }
 
         if (match < 0)
@@ -178,7 +182,7 @@ public static class EntryAction
         }
         if (list->GetItemDisabledState(match) || !list->IsItemInteractionEnabled)
         {
-            error = $"入口选项“{labels[match]}”当前不可用";
+            error = $"入口选项“{matchedLabel}”当前不可用";
             return false;
         }
 

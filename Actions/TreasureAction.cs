@@ -4,6 +4,7 @@ public sealed record TreasureCandidate(int Slot, uint ItemId, string Name);
 
 public static class TreasureAction
 {
+    private const uint ThiefDaggerId = 57;
     private static readonly uint[] RecoveryItemIds =
         [76, 77, 78, 79, 80, 81, 82, 140, 141];
 
@@ -14,10 +15,12 @@ public static class TreasureAction
         IReadOnlyCollection<uint> excludedItemIds,
         out uint selectedItemId,
         out string selectedName,
+        out int selectionLimit,
         out string error)
     {
         selectedItemId = 0;
         selectedName = string.Empty;
+        selectionLimit = 1;
         var addon = snapshot.Addons.FirstOrDefault(x => x.Name == "XBMContentsTreasure" && x.IsReady);
         if (addon == null)
         {
@@ -35,6 +38,7 @@ public static class TreasureAction
 
         var ownedItems = ReadOwnedIds(values, 24, 5, 10);
         var ownedEquipment = ReadOwnedIds(values, 75, 5, 10);
+        selectionLimit = ownedEquipment.Contains(ThiefDaggerId) ? 2 : 1;
         var hasRecoveryItem = ownedItems.Any(x => RecoveryItemIds.Contains(x));
         var hasElementalAxe = CrucibleItemCatalog.HasElementalAxe(ownedEquipment);
         var eligibleCandidates = candidates

@@ -19,7 +19,7 @@ public sealed class ArenaController
     private static readonly TimeSpan FullFlowTimeout = TimeSpan.FromMinutes(45);
     private static readonly TimeSpan NodeEventTimeout = TimeSpan.FromSeconds(12);
     private static readonly string Version = typeof(ArenaController).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.8";
+        .GetName().Version?.ToString(4) ?? "0.2.4.9";
 
     private readonly ArenaUiReader reader;
     private readonly SnapshotExporter exporter;
@@ -52,6 +52,8 @@ public sealed class ArenaController
     private bool restTried;
     private bool restConfirmed;
     private bool treasureTried;
+    private int treasureSelections;
+    private int treasureSelectionLimit = 1;
     private uint pendingTreasureItemId;
     private readonly HashSet<uint> rejectedTreasureItemIds = [];
     private bool shopTried;
@@ -623,6 +625,8 @@ public sealed class ArenaController
                 nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
                 return;
             }
+            if (LastSnapshot.Phase == ArenaPhase.Treasure && pendingTreasureItemId != 0)
+                treasureSelections = Math.Max(0, treasureSelections - 1);
             treasureTried = false;
             FullFlowStatus = "已确认无法全部获取，等待选择单件奖励";
             nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
@@ -779,7 +783,7 @@ public sealed class ArenaController
                     return;
                 }
                 itemDisposeTried = true;
-                treasureTried = true;
+                treasureTried = treasureSelections >= treasureSelectionLimit;
                 FullFlowStatus = $"正在用 {CrucibleItemCatalog.GetName(targetItemId)} 替换 {CrucibleItemCatalog.GetName(replacement.Value.ItemId)}";
             }
             nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
@@ -812,7 +816,10 @@ public sealed class ArenaController
                 if (TreasureAction.TryDismissPopup(out var popupError))
                 {
                     if (pendingTreasureItemId != 0)
+                    {
                         rejectedTreasureItemIds.Add(pendingTreasureItemId);
+                        treasureSelections = Math.Max(0, treasureSelections - 1);
+                    }
                     FullFlowStatus = pendingTreasureItemId == 0
                         ? "已关闭宝物重复提示，正在重新选择"
                         : $"{CrucibleItemCatalog.GetName(pendingTreasureItemId)} 已重复，正在选择下一件宝物";
@@ -833,11 +840,16 @@ public sealed class ArenaController
                         rejectedTreasureItemIds,
                         out var selectedTreasureItemId,
                         out var selectedTreasureName,
+                        out treasureSelectionLimit,
                         out _))
                 {
                     pendingTreasureItemId = selectedTreasureItemId;
-                    treasureTried = true;
-                    FullFlowStatus = $"正在领取宝箱奖励：{selectedTreasureName}";
+                    itemDisposeTried = false;
+                    treasureSelections++;
+                    treasureTried = treasureSelections >= treasureSelectionLimit;
+                    FullFlowStatus = treasureTried
+                        ? $"正在领取宝箱奖励：{selectedTreasureName}"
+                        : $"已选择第 {treasureSelections} 件宝箱奖励：{selectedTreasureName}，等待选择下一件";
                 }
                 else if (TreasureAction.TryExit(out var treasureError))
                 {
@@ -1089,7 +1101,7 @@ public sealed class ArenaController
 
             if (config.AutoTargetBoss && !assigningParty)
             {
-                if (BossAction.TryTargetBoss(out var targetError))
+                if (BossAction.TryTargetBoss(config.BossPriority, out var targetError))
                     FullFlowStatus = "已自动选中BOSS";
                 else
                     FullFlowStatus = $"自动选中BOSS：{targetError}";
@@ -1109,7 +1121,7 @@ public sealed class ArenaController
                     var player = DalamudApi.ObjectTable.LocalPlayer;
                     if (player != null)
                     {
-                        var dist = BossAction.GetDistanceToBoss(player);
+                        var dist = BossAction.GetDistanceToBoss(config.BossPriority, player);
                         if (!dist.HasValue)
                         {
                             countdownReadyAtUtc = DateTime.MinValue;
@@ -1120,7 +1132,7 @@ public sealed class ArenaController
                         {
                             countdownReadyAtUtc = DateTime.MinValue;
                             FullFlowStatus = $"正在接近BOSS（{dist.Value:F1}米）";
-                            navigation.MoveTo(BossAction.GetClosePosition(player));
+                            navigation.MoveTo(BossAction.GetClosePosition(config.BossPriority, player));
                             nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
                             return;
                         }
@@ -1486,6 +1498,8 @@ public sealed class ArenaController
         restTried = false;
         restConfirmed = false;
         treasureTried = false;
+        treasureSelections = 0;
+        treasureSelectionLimit = 1;
         pendingTreasureItemId = 0;
         rejectedTreasureItemIds.Clear();
         shopTried = false;
@@ -1518,6 +1532,8 @@ public sealed class ArenaController
         restTried = false;
         restConfirmed = false;
         treasureTried = false;
+        treasureSelections = 0;
+        treasureSelectionLimit = 1;
         pendingTreasureItemId = 0;
         rejectedTreasureItemIds.Clear();
         shopTried = false;

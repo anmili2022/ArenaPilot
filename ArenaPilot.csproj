@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.2.4.8</Version>
-    <AssemblyInformationalVersion>0.2.4.8</AssemblyInformationalVersion>
-    <AssemblyVersion>0.2.4.8</AssemblyVersion>
+    <Version>0.2.4.9</Version>
+    <AssemblyInformationalVersion>0.2.4.9</AssemblyInformationalVersion>
+    <AssemblyVersion>0.2.4.9</AssemblyVersion>
     <InternalName>ArenaPilot</InternalName>
     <RootNamespace>ArenaPilot</RootNamespace>
     <Description>FFXIV Beast Arena auto-run for supported boards.</Description>
