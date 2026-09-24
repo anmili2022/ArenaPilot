@@ -19,7 +19,7 @@ public sealed class ArenaController
     private static readonly TimeSpan FullFlowTimeout = TimeSpan.FromMinutes(45);
     private static readonly TimeSpan NodeEventTimeout = TimeSpan.FromSeconds(12);
     private static readonly string Version = typeof(ArenaController).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.11";
+        .GetName().Version?.ToString(4) ?? "0.2.4.12";
 
     private readonly ArenaUiReader reader;
     private readonly SnapshotExporter exporter;
@@ -33,6 +33,7 @@ public sealed class ArenaController
     private int partyActionAttempts;
     private bool assigningParty;
     private uint[] partyAssignmentPetIds = [];
+    private string partyMembersBeforeClick = string.Empty;
     private bool startBattleAfterParty;
     private bool startingBattle;
     private DateTime battleActionDeadlineUtc;
@@ -381,6 +382,7 @@ public sealed class ArenaController
 
         assigningParty = true;
         partyAssignmentPetIds = battlePetIds;
+        partyMembersBeforeClick = string.Empty;
         partyActionAttempts = 0;
         partyActionDeadlineUtc = DateTime.UtcNow.AddSeconds(20);
         nextPartyActionUtc = DateTime.UtcNow;
@@ -408,9 +410,17 @@ public sealed class ArenaController
             BattleActionStatus = $"无法开始：{error}";
             return;
         }
-        if (!PartySetupAction.IsComplete(members, config))
+        uint[] battlePetIds;
+        if (partyAssignmentPetIds.Length == 3)
+            battlePetIds = partyAssignmentPetIds;
+        else if (!PartySetupAction.TryGetBattlePetIds(members, config, out battlePetIds, out var partyError))
         {
-            BattleActionStatus = $"无法开始：请先把 1、2、3 号兽笛设置为{string.Join("、", config.FlutePetNames)}";
+            BattleActionStatus = $"无法开始：{partyError}";
+            return;
+        }
+        if (!PartySetupAction.IsComplete(members, battlePetIds))
+        {
+            BattleActionStatus = $"无法开始：请先把 1、2、3 号兽笛设置为{string.Join("、", battlePetIds.Select(x => PetCatalog.GetName((int)x)))}";
             return;
         }
         if (members.Count(x => x.Slot == 0) != 1
@@ -437,6 +447,7 @@ public sealed class ArenaController
         }
 
         startingBattle = true;
+        partyAssignmentPetIds = [];
         battleActionDeadlineUtc = DateTime.UtcNow.AddSeconds(10);
         BattleActionStatus = "已发送战斗开始，等待场景确认";
     }
@@ -535,13 +546,23 @@ public sealed class ArenaController
             CancelPartyAssignment($"读取失败：{error}");
             return;
         }
+        var memberState = FormatPartyMembers(members);
+        if (!string.IsNullOrEmpty(partyMembersBeforeClick))
+        {
+            if (memberState == partyMembersBeforeClick)
+            {
+                PartyActionStatus = $"等待上次兽笛操作生效：{memberState}";
+                nextPartyActionUtc = DateTime.UtcNow.AddMilliseconds(250);
+                return;
+            }
+            partyMembersBeforeClick = string.Empty;
+        }
         if (PartySetupAction.IsComplete(members, partyAssignmentPetIds))
         {
             assigningParty = false;
             var assignedNames = partyAssignmentPetIds.Select(x => PetCatalog.GetName((int)x)).ToArray();
             PartyActionStatus = $"设置完成：1号{assignedNames[0]}、2号{assignedNames[1]}、3号{assignedNames[2]}";
             PreparationCheck = $"准备检查通过：1、2、3号兽笛分别为{string.Join("、", assignedNames)}";
-            partyAssignmentPetIds = [];
             if (startBattleAfterParty)
             {
                 startBattleAfterParty = false;
@@ -558,8 +579,10 @@ public sealed class ArenaController
         }
 
         partyActionAttempts++;
-        PartyActionStatus = $"已操作 {next.Name}，等待界面确认";
-        nextPartyActionUtc = DateTime.UtcNow.AddMilliseconds(750);
+        partyMembersBeforeClick = memberState;
+        var targets = string.Join("/", partyAssignmentPetIds.Select(x => PetCatalog.GetName((int)x)));
+        PartyActionStatus = $"已操作 {next.Name}，目标={targets}，操作前={memberState}";
+        nextPartyActionUtc = DateTime.UtcNow.AddMilliseconds(250);
     }
 
     private void TickFullFlow()
@@ -1639,9 +1662,13 @@ public sealed class ArenaController
         assigningParty = false;
         startBattleAfterParty = false;
         partyAssignmentPetIds = [];
+        partyMembersBeforeClick = string.Empty;
         PartyActionStatus = reason;
         DalamudApi.Log.Warning("Arena party assignment stopped: {Reason}.", reason);
     }
+
+    private static string FormatPartyMembers(IEnumerable<ArenaPartyMember> members)
+        => string.Join("，", members.Select(x => $"{x.Name}:{x.PetId}/HP{x.Hp}/S{x.Slot}"));
 
     private string GetRouteSuggestion(int? node, ArenaNodeKind kind)
     {

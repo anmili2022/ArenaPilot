@@ -91,10 +91,12 @@ public static class PartySetupAction
         if (prefix == desired.Length)
             return null;
 
-        return members
-            .Where(x => x.Slot is >= 0 and < 3 && x.Slot >= prefix)
-            .OrderByDescending(x => x.Slot)
-            .FirstOrDefault() ?? desired[prefix];
+        var target = desired[prefix]!;
+        if (target.Slot is >= 0 and < 3)
+            return target;
+
+        var occupant = members.FirstOrDefault(x => x.Slot == prefix);
+        return occupant ?? target;
     }
 
     public static bool TryGetBattlePetIds(
@@ -128,7 +130,7 @@ public static class PartySetupAction
 
             var replacement = members
                 .Where(x => x.Hp > 0 && !reserved.Contains(x.PetId) && !used.Contains(x.PetId))
-                .OrderBy(x => x.Slot == 3 ? 0 : 1)
+                .OrderBy(x => x.Slot == slot ? 0 : x.Slot == 3 ? 1 : 2)
                 .ThenBy(x => x.Row)
                 .FirstOrDefault();
             if (replacement == null)
