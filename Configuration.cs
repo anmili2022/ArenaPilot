@@ -50,7 +50,7 @@ public sealed class Configuration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 14;
+    public int Version { get; set; } = 15;
     public string SelectedStageKey { get; set; } = string.Empty;
     public bool DiagnosticsEnabled { get; set; } = true;
     public int RepeatCount { get; set; }
@@ -183,6 +183,22 @@ public sealed class Configuration : IPluginConfiguration
                 BossPriority.Insert(insertAt, new ArenaBossTarget(19746, "魔刃"));
             }
             Version = 14;
+            changed = true;
+        }
+        if (Version < 15)
+        {
+            var ids = new uint[] { 19683, 19684, 19685, 19682 };
+            var entries = BossPriority.Where(x => ids.Contains(x.Id)).ToDictionary(x => x.Id);
+            BossPriority.RemoveAll(x => ids.Contains(x.Id));
+            var insertAt = BossPriority.FindIndex(x => x.Id == 19676);
+            if (insertAt < 0)
+                insertAt = BossPriority.Count;
+            var ordered = ids
+                .Where(entries.ContainsKey)
+                .Select(id => entries[id])
+                .ToArray();
+            BossPriority.InsertRange(insertAt + (insertAt < BossPriority.Count ? 1 : 0), ordered);
+            Version = 15;
             changed = true;
         }
 

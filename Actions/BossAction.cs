@@ -17,7 +17,7 @@ public static class BossAction
         new(19663, "奇子·花苗"), new(19662, "奇子·蛞蝓"), new(19661, "奇子·树精"),
         new(19672, "怨毒龙 博尔格尼"), new(19678, "节点2 奇子·毒性蘑菇"), new(19677, "节点2 奇子·夺心魔"),
         new(19675, "节点3 奇子·佛劳洛斯"), new(19676, "节点3 雷元精"), new(19683, "节点7 奇子·深瞳"),
-        new(19682, "节点7 奇子·夜魔人"), new(19684, "节点7 奇子·爆弹怪"), new(19685, "节点7 光元精"),
+        new(19684, "节点7 奇子·爆弹怪"), new(19685, "节点7 光元精"), new(19682, "节点7 奇子·夜魔人"),
         new(19687, "节点8 奇子·红格雷姆林"), new(19688, "节点8 奇子·格雷姆林"), new(19692, "节点8 奇子·石像魔"),
         new(19689, "节点8 奇子·软糊怪"), new(19690, "节点8 奇子·奶冻怪"), new(19691, "节点8 奇子·甜羹怪"),
         new(19686, "节点8 奇子·阿托莫斯"), new(19693, "节点8 奇子·威胁扎哈克"), new(19696, "节点9 奇子·火蛟"),
@@ -121,10 +121,18 @@ public static class BossAction
             .OfType<ICharacter>()
             .Where(x => x.IsTargetable && !x.IsDead)
             .ToArray();
+        var player = DalamudApi.ObjectTable.LocalPlayer;
 
         foreach (var target in priority)
         {
-            var boss = candidates.FirstOrDefault(x => x.BaseId == target.Id);
+            var matching = candidates.Where(x => x.BaseId == target.Id);
+            var boss = player == null
+                ? matching.FirstOrDefault()
+                : matching
+                    .OrderBy(x => Vector3.DistanceSquared(
+                        new Vector3(x.Position.X, x.Position.Y, x.Position.Z),
+                        new Vector3(player.Position.X, player.Position.Y, player.Position.Z)))
+                    .FirstOrDefault();
             if (boss != null)
                 return boss;
         }
