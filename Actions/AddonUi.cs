@@ -410,4 +410,241 @@ internal static class AddonUi
                 FindEvents(&component->UldManager, listener, eventType, parameter, found, depth + 1);
         }
     }
+
+    public sealed record CardNode(uint NodeId, uint Param, string Name, bool Obtained);
+
+    public static unsafe IReadOnlyList<CardNode> ReadCards(string addonName, int cardType, string obtainedText)
+    {
+        var addon = GetReady(addonName);
+        var result = new List<CardNode>();
+        if (addon == null)
+            return result;
+        CollectCards(&addon->UldManager, cardType, obtainedText, result, 0);
+        result.Sort((a, b) => a.NodeId.CompareTo(b.NodeId));
+        return result;
+    }
+
+    public static unsafe string DumpCardScan(string addonName, int cardType, string obtainedText)
+    {
+        var addon = GetReady(addonName);
+        if (addon == null)
+            return $"{addonName} 不存在或未就绪";
+        var typeCounts = new Dictionary<int, int>();
+        var cards = new List<CardNode>();
+        ScanNodes(&addon->UldManager, cardType, obtainedText, cards, typeCounts, 0);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"卡片类型 {cardType} 命中 {cards.Count} 个");
+        foreach (var card in cards)
+            sb.AppendLine($"  卡片节点={card.NodeId} 参数={card.Param} 已获得={card.Obtained} 名称={card.Name}");
+        sb.AppendLine("节点类型统计：" + string.Join(", ",
+            typeCounts.OrderByDescending(x => x.Value).Select(x => $"{x.Key}x{x.Value}")));
+        return sb.ToString().TrimEnd();
+    }
+
+    private static unsafe void ScanNodes(
+        AtkUldManager* manager,
+        int cardType,
+        string obtainedText,
+        List<CardNode> cards,
+        Dictionary<int, int> typeCounts,
+        int depth)
+    {
+        if (depth > 10 || manager->NodeList == null || manager->NodeListCount > 4096)
+            return;
+
+        for (var i = 0; i < manager->NodeListCount; i++)
+        {
+            var node = manager->NodeList[i];
+            if (node == null)
+                continue;
+            var type = (int)node->Type;
+            typeCounts[type] = typeCounts.GetValueOrDefault(type) + 1;
+
+            if (type == cardType)
+            {
+                uint? cardParam = null;
+                var current = node->AtkEventManager.Event;
+                var eventCount = 0;
+                while (current != null && eventCount++ < 64)
+                {
+                    if (current->State.EventType == (AtkEventType)25)
+                    {
+                        cardParam = current->Param;
+                        break;
+                    }
+                    current = current->NextEvent;
+                }
+                var component = ((AtkComponentNode*)node)->Component;
+                var (name, obtained) = component == null
+                    ? (string.Empty, false)
+                    : ReadCardText(&component->UldManager, obtainedText, 0);
+                cards.Add(new CardNode(node->NodeId, cardParam ?? 0, name, obtained));
+            }
+
+            if (type < 1000)
+                continue;
+            var child = ((AtkComponentNode*)node)->Component;
+            if (child != null)
+                ScanNodes(&child->UldManager, cardType, obtainedText, cards, typeCounts, depth + 1);
+        }
+    }
+
+    private static unsafe void CollectCards(
+        AtkUldManager* manager,
+        int cardType,
+        string obtainedText,
+        List<CardNode> result,
+        int depth)
+    {
+        if (depth > 8 || manager->NodeList == null || manager->NodeListCount > 2048)
+            return;
+
+        for (var i = 0; i < manager->NodeListCount; i++)
+        {
+            var node = manager->NodeList[i];
+            if (node == null)
+                continue;
+
+            if ((int)node->Type == cardType)
+            {
+                uint? cardParam = null;
+                var current = node->AtkEventManager.Event;
+                var eventCount = 0;
+                while (current != null && eventCount++ < 64)
+                {
+                    if (current->State.EventType == (AtkEventType)25)
+                    {
+                        cardParam = current->Param;
+                        break;
+                    }
+                    current = current->NextEvent;
+                }
+
+                if (cardParam.HasValue)
+                {
+                    var component = ((AtkComponentNode*)node)->Component;
+                    if (component != null)
+                    {
+                        var (name, obtained) = ReadCardText(&component->UldManager, obtainedText, 0);
+                        if (!string.IsNullOrWhiteSpace(name))
+                            result.Add(new CardNode(node->NodeId, cardParam.Value, name, obtained));
+                    }
+                }
+            }
+
+            if ((int)node->Type < 1000)
+                continue;
+            var child = ((AtkComponentNode*)node)->Component;
+            if (child != null)
+                CollectCards(&child->UldManager, cardType, obtainedText, result, depth + 1);
+        }
+    }
+
+    private static unsafe (string Name, bool Obtained) ReadCardText(
+        AtkUldManager* manager,
+        string obtainedText,
+        int depth)
+    {
+        var name = string.Empty;
+        var obtained = false;
+        if (depth > 8 || manager->NodeList == null || manager->NodeListCount > 4096)
+            return (name, obtained);
+
+        for (var i = 0; i < manager->NodeListCount; i++)
+        {
+            var node = manager->NodeList[i];
+            if (node == null)
+                continue;
+
+            var type = (int)node->Type;
+            if (type == 3)
+            {
+                var text = new ReadOnlySeStringSpan(
+                    ((Utf8String*)(&((AtkTextNode*)node)->NodeText))->StringPtr).ExtractText().Trim();
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+                if (text.Contains(obtainedText, StringComparison.Ordinal))
+                {
+                    if (node->IsVisible())
+                        obtained = true;
+                    continue;
+                }
+                // 名称节点固定为 NodeId=3；效果和类别文本位于其他节点。
+                if (string.IsNullOrWhiteSpace(name) && node->IsVisible() && node->NodeId == 3)
+                    name = text;
+            }
+            else if (type >= 1000)
+            {
+                var component = ((AtkComponentNode*)node)->Component;
+                if (component != null)
+                {
+                    var (childName, childObtained) =
+                        ReadCardText(&component->UldManager, obtainedText, depth + 1);
+                    if (string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(childName))
+                        name = childName;
+                    obtained |= childObtained;
+                }
+            }
+        }
+        return (name, obtained);
+    }
+
+    public static unsafe bool TrySendCardEvent(string addonName, uint parameter, out string error)
+    {
+        var addon = GetReady(addonName);
+        if (addon == null)
+        {
+            error = $"{addonName} 界面已关闭或尚未准备好";
+            return false;
+        }
+
+        var found = new List<nint>();
+        CollectParamEvents(&addon->UldManager, (AtkEventType)25, parameter, found, 0);
+        if (found.Count != 1)
+        {
+            error = found.Count == 0
+                ? $"参数 {parameter} 的卡片操作事件尚未准备好"
+                : $"参数 {parameter} 的卡片操作事件不唯一";
+            return false;
+        }
+
+        var eventPtr = (AtkEvent*)found[0];
+        var eventValue = *eventPtr;
+        var eventData = default(AtkEventData);
+        eventPtr->Listener->ReceiveEvent((AtkEventType)25, (int)parameter, &eventValue, &eventData);
+        error = string.Empty;
+        return true;
+    }
+
+    private static unsafe void CollectParamEvents(
+        AtkUldManager* manager,
+        AtkEventType eventType,
+        uint parameter,
+        List<nint> found,
+        int depth)
+    {
+        if (depth > 8 || manager->NodeList == null || manager->NodeListCount > 2048)
+            return;
+
+        for (var i = 0; i < manager->NodeListCount; i++)
+        {
+            var node = manager->NodeList[i];
+            if (node == null)
+                continue;
+            var current = node->AtkEventManager.Event;
+            var eventCount = 0;
+            while (current != null && eventCount++ < 64)
+            {
+                if (current->State.EventType == eventType && current->Param == parameter)
+                    found.Add((nint)current);
+                current = current->NextEvent;
+            }
+
+            if ((int)node->Type < 1000)
+                continue;
+            var component = ((AtkComponentNode*)node)->Component;
+            if (component != null)
+                CollectParamEvents(&component->UldManager, eventType, parameter, found, depth + 1);
+        }
+    }
 }

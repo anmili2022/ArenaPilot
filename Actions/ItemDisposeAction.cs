@@ -7,10 +7,11 @@ public sealed record DisposeItemSlot(int Slot, uint ItemId, string Name);
 public static class ItemDisposeAction
 {
     public static bool TryRead(ArenaSnapshot snapshot, out uint targetItemId, out bool isPurchase,
-        out IReadOnlyList<DisposeItemSlot> items, out string error)
+        out bool isEquipment, out IReadOnlyList<DisposeItemSlot> items, out string error)
     {
         targetItemId = 0;
         isPurchase = false;
+        isEquipment = false;
         items = [];
         var addon = snapshot.Addons.FirstOrDefault(x => x.Name == "XBMContentsItemDispose" && x.IsReady);
         if (addon == null)
@@ -32,15 +33,42 @@ public static class ItemDisposeAction
                     || prompt.Text?.Contains("購入", StringComparison.Ordinal) == true
                     || prompt.Text?.Contains("purchase", StringComparison.OrdinalIgnoreCase) == true);
 
+        var header = string.Join(" ", values.Values
+            .Where(x => x.Index is 1 or 2 or 3 && !string.IsNullOrWhiteSpace(x.Text))
+            .Select(x => x.Text));
+        isEquipment = header.Contains("斗兽装备", StringComparison.Ordinal)
+            || header.Contains("鬥獸裝備", StringComparison.Ordinal)
+            || header.Contains("装備", StringComparison.Ordinal)
+            || header.Contains("equipment", StringComparison.OrdinalIgnoreCase);
+
         var result = new List<DisposeItemSlot>();
-        for (var slot = 0; slot < 10; slot++)
+        if (isEquipment)
         {
-            var offset = 6 + slot * 5;
-            if (!TryNumber(values, offset + 3, out var itemRaw) || itemRaw <= 0)
-                continue;
-            var name = values.TryGetValue(offset + 4, out var nameValue) ? nameValue.Text ?? string.Empty : string.Empty;
-            result.Add(new DisposeItemSlot(slot, (uint)itemRaw, name));
+            for (var slot = 0; slot < 10; slot++)
+            {
+                var offset = 8 + slot * 5;
+                if (!TryNumber(values, offset + 1, out var itemRaw) || itemRaw <= 0)
+                    continue;
+                var name = values.TryGetValue(offset + 2, out var nameValue)
+                    ? nameValue.Text ?? string.Empty
+                    : string.Empty;
+                result.Add(new DisposeItemSlot(slot, (uint)itemRaw, name));
+            }
         }
+        else
+        {
+            for (var slot = 0; slot < 10; slot++)
+            {
+                var offset = 6 + slot * 5;
+                if (!TryNumber(values, offset + 3, out var itemRaw) || itemRaw <= 0)
+                    continue;
+                var name = values.TryGetValue(offset + 4, out var nameValue)
+                    ? nameValue.Text ?? string.Empty
+                    : string.Empty;
+                result.Add(new DisposeItemSlot(slot, (uint)itemRaw, name));
+            }
+        }
+
         items = result;
         error = string.Empty;
         return true;

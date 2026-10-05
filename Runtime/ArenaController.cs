@@ -19,7 +19,7 @@ public sealed class ArenaController
     private static readonly TimeSpan FullFlowTimeout = TimeSpan.FromMinutes(45);
     private static readonly TimeSpan NodeEventTimeout = TimeSpan.FromSeconds(12);
     private static readonly string Version = typeof(ArenaController).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.13";
+        .GetName().Version?.ToString(4) ?? "0.2.4.14";
 
     private readonly ArenaUiReader reader;
     private readonly SnapshotExporter exporter;
@@ -47,7 +47,10 @@ public sealed class ArenaController
     private bool battleObserved;
     private bool rewardRequested;
     private bool rewardTakeAllRejected;
-    private bool rewardSingleRequested;
+    private string pendingLootName = string.Empty;
+    private DateTime lootAwaitConfirmSinceUtc = DateTime.MinValue;
+    private bool lootCardSelected;
+    private bool lootTakeAllRetried;
     private DateTime resultSeenAtUtc;
     private DateTime resultNextPageAtUtc;
     private bool restLeaveSent;
@@ -68,6 +71,7 @@ public sealed class ArenaController
     private DateTime shopPendingSinceUtc;
     private int shopPurchaseCount;
     private bool itemDisposeTried;
+    private bool itemDisposeConfirmed;
     private bool navigationStarted;
     private DateTime navigationStartedAtUtc;
     private DateTime arrivedAtUtc;
@@ -150,6 +154,10 @@ public sealed class ArenaController
 
         if (LastSnapshot.VisibleAddons.Contains("XBMContentsTreasure", StringComparer.Ordinal))
             text += "\n\n" + ArenaUiReader.BuildAddonDump("XBMContentsTreasure");
+
+        text += "\n\n" + ArenaUiReader.BuildAddonDump("XBMContentsBooty");
+        text += "\n\n===== 战利品卡片扫描 =====\n"
+            + AddonUi.DumpCardScan("XBMContentsBooty", 1008, "已获得此道具");
 
         if (LastSnapshot.VisibleAddons.Contains("SelectOk", StringComparer.Ordinal))
             text += "\n\n" + ArenaUiReader.BuildAddonDump("SelectOk");
@@ -661,17 +669,31 @@ public sealed class ArenaController
         }
 
         if (LastSnapshot.Phase == ArenaPhase.Loot
-            && LastSnapshot.VisibleAddons.Contains("SelectOk", StringComparer.Ordinal))
+            && LastSnapshot.VisibleAddons.Contains("SelectOk", StringComparer.Ordinal)
+            && !lootCardSelected)
         {
-            if (!TreasureAction.TryDismissPopup(out var rewardCapacityError))
+            if (!LootAction.TryDismissPopup(out var rewardCapacityError))
             {
                 FullFlowStatus = rewardCapacityError;
                 nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
                 return;
             }
+            // 收尾阶段再次“全部获取”仍失败，说明确实没有空间，直接离开。
+            if (lootTakeAllRetried)
+            {
+                if (!LootAction.TryExit(out var lootDoneError))
+                {
+                    FullFlowStatus = lootDoneError;
+                    nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                    return;
+                }
+                rewardRequested = true;
+                FullFlowStatus = "战利品已无空间，正在离开战利品界面";
+                nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                return;
+            }
             rewardTakeAllRejected = true;
-            rewardSingleRequested = false;
-            FullFlowStatus = "战利品栏已满，正在改为选择单件奖励";
+            FullFlowStatus = "战利品无法全部获取，正在改为逐件领取";
             nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
             return;
         }
@@ -748,17 +770,111 @@ public sealed class ArenaController
             navigation.Stop();
             navigationStarted = false;
             battleObserved = true;
-            if (rewardTakeAllRejected)
+
+            // “全部获取”或卡片获取的确认框：Loot 阶段的 SelectYesno 一律选择“是”。
+            if (LastSnapshot.Addons.Any(x => x.Name == "SelectYesno" && x.IsReady))
             {
-                if (!rewardSingleRequested && !RewardAction.TryTakeFirst(out var singleRewardError))
+                if (!AddonUi.TryFireCallback("SelectYesno", 0, out var lootYesnoError))
                 {
-                    FullFlowStatus = $"选择单件战利品失败：{singleRewardError}";
+                    FullFlowStatus = lootYesnoError;
                     nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
                     return;
                 }
-                rewardSingleRequested = true;
-                rewardRequested = true;
-                FullFlowStatus = "已选择第一件战利品，等待确认或替换道具";
+                if (lootCardSelected)
+                {
+                    lootCardSelected = false;
+                    lootAwaitConfirmSinceUtc = DateTime.MinValue;
+                    FullFlowStatus = $"已确认获取 {pendingLootName}";
+                }
+                else
+                {
+                    FullFlowStatus = "已确认全部获取";
+                }
+                nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                return;
+            }
+
+            if (rewardTakeAllRejected)
+            {
+                // 卡片已点，等待“确定”弹出后确认。
+                if (lootCardSelected)
+                {
+                    if (LastSnapshot.Addons.Any(x => x.Name == "SelectOk" && x.IsReady))
+                    {
+                        if (!LootAction.TryDismissPopup(out var lootConfirmError))
+                        {
+                            FullFlowStatus = lootConfirmError;
+                            nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                            return;
+                        }
+                        lootCardSelected = false;
+                        lootAwaitConfirmSinceUtc = DateTime.MinValue;
+                        FullFlowStatus = $"已确认获取 {pendingLootName}";
+                        nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                        return;
+                    }
+                    if (lootAwaitConfirmSinceUtc == DateTime.MinValue)
+                        lootAwaitConfirmSinceUtc = DateTime.UtcNow;
+                    if (DateTime.UtcNow - lootAwaitConfirmSinceUtc > TimeSpan.FromSeconds(5))
+                    {
+                        // 未出现确认框，视为已直接领取，继续下一件。
+                        lootCardSelected = false;
+                        lootAwaitConfirmSinceUtc = DateTime.MinValue;
+                        FullFlowStatus = $"未出现确认框，继续领取下一件（{pendingLootName}）";
+                    }
+                    else
+                    {
+                        FullFlowStatus = $"已选择 {pendingLootName}，等待确认框";
+                    }
+                    nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                    return;
+                }
+
+                if (!LootAction.TryReadCardsAvailable(out var lootCards, out var lootReadError))
+                {
+                    FullFlowStatus = lootReadError;
+                    nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                    return;
+                }
+                var next = lootCards.FirstOrDefault();
+                if (next == null)
+                {
+                    // 逐件处理完后再发一次“全部获取”，用于收取斗兽币等非卡片奖励。
+                    if (!lootTakeAllRetried)
+                    {
+                        if (!RewardAction.TryTakeAll(out var retakeAllError))
+                        {
+                            FullFlowStatus = retakeAllError;
+                            nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                            return;
+                        }
+                        lootTakeAllRetried = true;
+                        rewardTakeAllRejected = false;
+                        FullFlowStatus = "逐件领取完成，正在尝试全部获取剩余奖励";
+                        nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                        return;
+                    }
+                    if (!LootAction.TryExit(out var lootExitError))
+                    {
+                        FullFlowStatus = lootExitError;
+                        nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                        return;
+                    }
+                    rewardRequested = true;
+                    FullFlowStatus = "战利品中没有可领取的目标，正在离开战利品界面";
+                    nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                    return;
+                }
+                if (!LootAction.TryTakeCard(next, out var singleRewardError))
+                {
+                    FullFlowStatus = $"选择战利品 {next.Name} 失败：{singleRewardError}";
+                    nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                    return;
+                }
+                pendingLootName = next.Name;
+                lootCardSelected = true;
+                lootAwaitConfirmSinceUtc = DateTime.MinValue;
+                FullFlowStatus = $"已选择战利品 {next.Name}，等待确认框";
                 nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
                 return;
             }
@@ -779,8 +895,25 @@ public sealed class ArenaController
             navigation.Stop();
             navigationStarted = false;
 
+            // 选择替换槽位后，游戏会弹出是否确认替换的对话框。
+            if (itemDisposeTried
+                && LastSnapshot.Addons.Any(x => x.Name == "SelectYesno" && x.IsReady))
+            {
+                if (!AddonUi.TryFireCallback("SelectYesno", 0, out var disposeConfirmError))
+                {
+                    FullFlowStatus = disposeConfirmError;
+                    nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                    return;
+                }
+                itemDisposeTried = false;
+                itemDisposeConfirmed = true;
+                FullFlowStatus = "已确认替换装备";
+                nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
+                return;
+            }
+
             if (!ItemDisposeAction.TryRead(LastSnapshot, out var targetItemId, out var isPurchase,
-                    out var disposeItems, out var disposeError))
+                    out var isEquipment, out var disposeItems, out var disposeError))
             {
                 FullFlowStatus = disposeError;
                 nextFullFlowActionUtc = DateTime.UtcNow.AddSeconds(1);
@@ -794,12 +927,22 @@ public sealed class ArenaController
                 return;
             }
 
-            if (!itemDisposeTried)
+            if (!itemDisposeTried && !itemDisposeConfirmed)
             {
-                var replacement = FindFirstUnprotectedSlot(
-                    disposeItems.Select(x => (x.Slot, x.ItemId)), config.ProtectedItemIds);
+                var replacement = isEquipment
+                    ? FindLowestPriorityEquipmentSlot(
+                        disposeItems.Select(x => (x.Slot, x.ItemId)),
+                        config.EquipmentPurchasePriority,
+                        config.ProtectedItemIds)
+                    : FindFirstUnprotectedSlot(
+                        disposeItems.Select(x => (x.Slot, x.ItemId)), config.ProtectedItemIds);
                 if (replacement == null)
                 {
+                    if (isEquipment)
+                    {
+                        StopFullFlow($"装备栏已满且无可替换装备，无法获取 {CrucibleItemCatalog.GetName(targetItemId)}");
+                        return;
+                    }
                     StopFullFlow($"宝箱奖励 {CrucibleItemCatalog.GetName(targetItemId)} 无可替换道具，已停止");
                     return;
                 }
@@ -1514,13 +1657,36 @@ public sealed class ArenaController
         return first.ItemId == 0 ? null : first;
     }
 
+    private static (int Slot, uint ItemId)? FindLowestPriorityEquipmentSlot(
+        IEnumerable<(int Slot, uint ItemId)> slots,
+        IReadOnlyList<uint> equipmentPriority,
+        IReadOnlyCollection<uint> protectedItems)
+    {
+        var priorityIndex = equipmentPriority
+            .Select((id, index) => (id, index))
+            .ToDictionary(x => x.id, x => x.index);
+        var candidates = slots
+            .Where(x => x.ItemId > 0 && !protectedItems.Contains(x.ItemId))
+            .ToArray();
+        if (candidates.Length == 0)
+            return null;
+        // 购买优先级中越靠后越先被替换；不在优先级中的装备视为最低优先级。
+        var chosen = candidates
+            .OrderByDescending(x => priorityIndex.TryGetValue(x.ItemId, out var index) ? index : int.MaxValue)
+            .First();
+        return (chosen.Slot, chosen.ItemId);
+    }
+
     private void ResetNodeActionFlags()
     {
         countdownSent = false;
         battleObserved = false;
         rewardRequested = false;
         rewardTakeAllRejected = false;
-        rewardSingleRequested = false;
+        pendingLootName = string.Empty;
+        lootCardSelected = false;
+        lootAwaitConfirmSinceUtc = DateTime.MinValue;
+        lootTakeAllRetried = false;
         restLeaveSent = false;
         restTried = false;
         restConfirmed = false;
@@ -1539,6 +1705,7 @@ public sealed class ArenaController
         shopPendingSinceUtc = DateTime.MinValue;
         shopPurchaseCount = 0;
         itemDisposeTried = false;
+        itemDisposeConfirmed = false;
     }
 
     private void ResetFullFlow(bool entered)
@@ -1552,7 +1719,10 @@ public sealed class ArenaController
         battleObserved = false;
         rewardRequested = false;
         rewardTakeAllRejected = false;
-        rewardSingleRequested = false;
+        pendingLootName = string.Empty;
+        lootCardSelected = false;
+        lootAwaitConfirmSinceUtc = DateTime.MinValue;
+        lootTakeAllRetried = false;
         resultSeenAtUtc = DateTime.MinValue;
         resultNextPageAtUtc = DateTime.MinValue;
         restLeaveSent = false;
@@ -1573,6 +1743,7 @@ public sealed class ArenaController
         shopPendingSinceUtc = DateTime.MinValue;
         shopPurchaseCount = 0;
         itemDisposeTried = false;
+        itemDisposeConfirmed = false;
         navigationStarted = false;
         navigationStartedAtUtc = DateTime.MinValue;
         arrivedAtUtc = DateTime.MinValue;

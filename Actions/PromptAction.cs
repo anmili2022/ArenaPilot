@@ -7,7 +7,6 @@ public static class PromptAction
         var hasPrompt = snapshot.Addons.Any(x => x.Name == "SelectYesno" && x.IsReady);
         var contextualConfirmation = hasPrompt && snapshot.Phase switch
         {
-            ArenaPhase.Loot => snapshot.Addons.Any(x => x.Name == "XBMContentsBooty" && x.IsReady),
             ArenaPhase.Shop => snapshot.Addons.Any(x => x.Name == "XBMContentsItemShop" && x.IsReady),
             ArenaPhase.Treasure => snapshot.Addons.Any(x => x.Name == "XBMContentsTreasure" && x.IsReady),
             ArenaPhase.Rest => snapshot.Addons.Any(x => x.Name == "XBMPetParty" && x.IsReady),

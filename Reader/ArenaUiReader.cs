@@ -150,10 +150,12 @@ public sealed class ArenaUiReader
                 return (ArenaPhase.Treasure, "正在选择宝箱奖励");
             if (Has("XBMContentsItemShop") || TryFindShopAddon(addonSnapshots, out _))
                 return (ArenaPhase.Shop, "正在处理商店");
-            if (Has("XBMContentsBooty"))
-                return (ArenaPhase.Loot, "正在领取战斗奖励");
+            // 战利品窗口可能残留在战斗前编队界面之下；
+            // 只要同时出现编队和棋盘详情，就优先处理战斗前编队。
             if (Has("XBMPetParty") && Has("XBMStageDetailList"))
                 return (ArenaPhase.PartySetup, "正在编队准备战斗");
+            if (Has("XBMContentsBooty"))
+                return (ArenaPhase.Loot, "正在领取战斗奖励");
             if (Has("XBMPetParty") && route?.GetKind(currentNode) == ArenaNodeKind.Rest)
                 return (ArenaPhase.Rest, "正在处理休息帐篷");
             if (Has("XBMPetParty") && !Has("XBMStageDetailList"))

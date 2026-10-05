@@ -7,7 +7,7 @@ namespace ArenaPilot;
 public sealed class MainWindow
 {
     private static readonly string Version = typeof(MainWindow).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.13";
+        .GetName().Version?.ToString(4) ?? "0.2.4.14";
 
     private readonly ArenaController controller;
     private readonly Configuration config;
@@ -167,7 +167,7 @@ public sealed class MainWindow
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.9f, 0.6f, 0.15f, 1f));
         ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.7f, 0.4f, 0.05f, 1f));
         if (ImGui.Button("状态", new Vector2(80f, 0f)))
-            ImGui.SetClipboardText(controller.GetStatusText());
+            ImGui.SetClipboardText(controller.GetDebugDataText());
         ImGui.PopStyleColor(3);
 
         ImGui.PopStyleVar();
@@ -404,7 +404,7 @@ public sealed class MainWindow
 
     private void DrawStrategyConfig()
     {
-        ImGui.TextDisabled("购买列表按优先级处理；商店出售和宝箱替换会按槽位处理所有未保护道具。");
+        ImGui.TextDisabled("购买列表按优先级处理；商店出售和宝箱替换会按槽位处理所有未保护物品。保护列表同时保护装备和奇弈道具。");
         if (!ImGui.BeginTabBar("##item-strategies"))
             return;
         if (ImGui.BeginTabItem("装备购买"))
@@ -423,7 +423,7 @@ public sealed class MainWindow
         if (ImGui.BeginTabItem("保护列表"))
         {
             DrawItemStrategy("保护列表", config.ProtectedItemIds,
-                ref protectedItemSelection, ref protectedItemSearch, CrucibleItemCatalog.Items);
+                ref protectedItemSelection, ref protectedItemSearch, CrucibleItemCatalog.AllItems);
             ImGui.EndTabItem();
         }
         ImGui.EndTabBar();
