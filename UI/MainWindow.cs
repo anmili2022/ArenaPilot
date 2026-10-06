@@ -7,7 +7,7 @@ namespace ArenaPilot;
 public sealed class MainWindow
 {
     private static readonly string Version = typeof(MainWindow).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.15";
+        .GetName().Version?.ToString(4) ?? "0.2.4.16";
 
     private readonly ArenaController controller;
     private readonly Configuration config;
@@ -796,7 +796,7 @@ public sealed class MainWindow
             }
         }
         ImGui.SameLine();
-        if (ImGui.Button($"清除该节点##route-clear-{route.StageId}"))
+        if (ImGui.Button($"重置节点坐标##route-clear-{route.StageId}"))
         {
             if (config.CustomNodeCoordinates.TryGetValue(route.StageId, out var nodes)
                 && nodes.Remove(routeSelectedNode))
@@ -804,7 +804,7 @@ public sealed class MainWindow
                 if (nodes.Count == 0)
                     config.CustomNodeCoordinates.Remove(route.StageId);
                 config.Save();
-                routeCoordMessage = $"已清除节点 {routeSelectedNode} 的自定义坐标";
+                routeCoordMessage = $"已重置节点 {routeSelectedNode} 的坐标";
             }
             else
             {
@@ -812,12 +812,12 @@ public sealed class MainWindow
             }
         }
         ImGui.SameLine();
-        if (ImGui.Button($"恢复全部默认##route-clearall-{route.StageId}"))
+        if (ImGui.Button($"重置所有节点坐标##route-clearall-{route.StageId}"))
         {
             if (config.CustomNodeCoordinates.Remove(route.StageId))
             {
                 config.Save();
-                routeCoordMessage = "已恢复该盘全部默认坐标";
+                routeCoordMessage = "已重置该盘所有节点坐标";
             }
             else
             {
