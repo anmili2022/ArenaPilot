@@ -6,6 +6,8 @@ namespace ArenaPilot;
 
 public sealed record ArenaBossTarget(uint Id, string Name);
 
+public sealed record SerializableVector3(float X, float Y, float Z);
+
 [Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
@@ -50,7 +52,7 @@ public sealed class Configuration : IPluginConfiguration
     [NonSerialized]
     private IDalamudPluginInterface? pluginInterface;
 
-    public int Version { get; set; } = 15;
+    public int Version { get; set; } = 16;
     public string SelectedStageKey { get; set; } = string.Empty;
     public bool DiagnosticsEnabled { get; set; } = true;
     public int RepeatCount { get; set; }
@@ -73,6 +75,8 @@ public sealed class Configuration : IPluginConfiguration
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public Dictionary<int, List<int>> CustomRoutes { get; set; } = [];
     [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
+    public Dictionary<int, Dictionary<int, SerializableVector3>> CustomNodeCoordinates { get; set; } = [];
+    [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
     public List<ArenaBossTarget> BossPriority { get; set; } = [.. BossAction.DefaultPriority];
 
     public uint[] FlutePetIds => [(uint)Flute1PetId, (uint)Flute2PetId, (uint)Flute3PetId];
@@ -87,6 +91,7 @@ public sealed class Configuration : IPluginConfiguration
     {
         this.pluginInterface = pluginInterface;
         CustomRoutes ??= [];
+        CustomNodeCoordinates ??= [];
         BossPriority ??= [];
 
         var changed = false;
@@ -201,6 +206,12 @@ public sealed class Configuration : IPluginConfiguration
             Version = 15;
             changed = true;
         }
+        if (Version < 16)
+        {
+            CustomNodeCoordinates ??= [];
+            Version = 16;
+            changed = true;
+        }
 
         changed |= Normalize(ShopPurchasePriority, out var purchase);
         changed |= Normalize(EquipmentPurchasePriority, out var equipmentPurchase);
@@ -216,6 +227,7 @@ public sealed class Configuration : IPluginConfiguration
         changed |= normalizedBosses.Count != BossPriority.Count
             || !normalizedBosses.SequenceEqual(BossPriority);
         BossPriority = normalizedBosses;
+        ArenaRoutes.ApplyCoordinateOverrides(CustomNodeCoordinates);
         if (changed)
             Save();
     }
@@ -228,5 +240,8 @@ public sealed class Configuration : IPluginConfiguration
     }
 
     public void Save()
-        => pluginInterface?.SavePluginConfig(this);
+    {
+        ArenaRoutes.ApplyCoordinateOverrides(CustomNodeCoordinates);
+        pluginInterface?.SavePluginConfig(this);
+    }
 }

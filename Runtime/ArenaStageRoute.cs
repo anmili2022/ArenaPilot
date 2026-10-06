@@ -11,6 +11,10 @@ public sealed record ArenaStageNode(
 
 public sealed class ArenaStageRoute
 {
+    // 运行时可注入的坐标覆盖，按 StageId -> NodeIndex -> 坐标。
+    public static IReadOnlyDictionary<int, IReadOnlyDictionary<int, Vector3>> CoordinateOverrides { get; set; }
+        = new Dictionary<int, IReadOnlyDictionary<int, Vector3>>();
+
     public required int StageId { get; init; }
     public required uint TerritoryId { get; init; }
     public required uint ContentId { get; init; }
@@ -28,6 +32,25 @@ public sealed class ArenaStageRoute
 
     public IReadOnlyList<int> AllIndexes => Nodes.Select(x => x.Index).ToArray();
 
+    public Vector3? GetOverride(int index)
+    {
+        if (CoordinateOverrides.TryGetValue(StageId, out var nodes)
+            && nodes.TryGetValue(index, out var value))
+            return value;
+        return null;
+    }
+
+    public bool IsNavigable(int index)
+    {
+        if (GetOverride(index).HasValue)
+            return true;
+        var node = Nodes.FirstOrDefault(x => x.Index == index);
+        return node != null && node.IsNavigable;
+    }
+
+    public Vector3 GetEffectiveCenter(int index)
+        => GetOverride(index) ?? Nodes.First(x => x.Index == index).Center;
+
     public bool IsOnBoard(Vector3 position)
         => float.IsFinite(position.X)
             && float.IsFinite(position.Y)
@@ -44,9 +67,10 @@ public sealed class ArenaStageRoute
         var point = new Vector2(position.X, position.Z);
         foreach (var node in Nodes)
         {
-            if (!node.IsNavigable)
+            if (!IsNavigable(node.Index))
                 continue;
-            var center = new Vector2(node.Center.X, node.Center.Z);
+            var center3 = GetEffectiveCenter(node.Index);
+            var center = new Vector2(center3.X, center3.Z);
             if (Vector2.Distance(point, center) <= NodeRadius)
                 return node.Index;
         }
@@ -55,7 +79,7 @@ public sealed class ArenaStageRoute
     }
 
     public Vector3 GetCenter(int index)
-        => Nodes.First(x => x.Index == index).Center;
+        => GetEffectiveCenter(index);
 
     public ArenaNodeKind GetKind(int? index)
     {

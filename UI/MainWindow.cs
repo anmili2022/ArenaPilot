@@ -7,7 +7,7 @@ namespace ArenaPilot;
 public sealed class MainWindow
 {
     private static readonly string Version = typeof(MainWindow).Assembly
-        .GetName().Version?.ToString(4) ?? "0.2.4.14";
+        .GetName().Version?.ToString(4) ?? "0.2.4.15";
 
     private readonly ArenaController controller;
     private readonly Configuration config;
@@ -32,6 +32,11 @@ public sealed class MainWindow
     private string bossConfigMessage = string.Empty;
     private readonly Dictionary<int, List<int>> routeDrafts = [];
     private string routeEditMessage = string.Empty;
+    private int routeSelectedNode = -1;
+    private float routeCoordX;
+    private float routeCoordY;
+    private float routeCoordZ;
+    private string routeCoordMessage = string.Empty;
 
     public MainWindow(ArenaController controller, Configuration config)
     {
@@ -640,25 +645,28 @@ public sealed class MainWindow
         if (!string.IsNullOrWhiteSpace(routeEditMessage))
             ImGui.TextDisabled(routeEditMessage);
 
+        DrawNodeCoordinateEditor(route);
+
         var canvasSize = new Vector2(Math.Max(480f, ImGui.GetContentRegionAvail().X), 390f);
         var origin = ImGui.GetCursorScreenPos();
         ImGui.Dummy(canvasSize);
         var drawList = ImGui.GetWindowDrawList();
         drawList.AddRectFilled(origin, origin + canvasSize,
             ImGui.ColorConvertFloat4ToU32(new Vector4(0.08f, 0.09f, 0.1f, 0.45f)), 4f);
-        var minX = route.Nodes.Min(x => x.Center.X);
-        var maxX = route.Nodes.Max(x => x.Center.X);
-        var minZ = route.Nodes.Min(x => x.Center.Z);
-        var maxZ = route.Nodes.Max(x => x.Center.Z);
+        var minX = route.Nodes.Min(x => route.GetEffectiveCenter(x.Index).X);
+        var maxX = route.Nodes.Max(x => route.GetEffectiveCenter(x.Index).X);
+        var minZ = route.Nodes.Min(x => route.GetEffectiveCenter(x.Index).Z);
+        var maxZ = route.Nodes.Max(x => route.GetEffectiveCenter(x.Index).Z);
         const float padding = 32f;
 
         Vector2 NodePosition(ArenaStageNode node)
         {
+            var center = route.GetEffectiveCenter(node.Index);
             var xRange = Math.Max(1f, maxX - minX);
             var zRange = Math.Max(1f, maxZ - minZ);
             return new Vector2(
-                origin.X + padding + (node.Center.X - minX) / xRange * (canvasSize.X - padding * 2f),
-                origin.Y + padding + (node.Center.Z - minZ) / zRange * (canvasSize.Y - padding * 2f));
+                origin.X + padding + (center.X - minX) / xRange * (canvasSize.X - padding * 2f),
+                origin.Y + padding + (center.Z - minZ) / zRange * (canvasSize.Y - padding * 2f));
         }
 
         var defaultEdges = BuildDefaultRoute(route).Zip(BuildDefaultRoute(route).Skip(1)).ToHashSet();
@@ -683,26 +691,40 @@ public sealed class MainWindow
         foreach (var node in route.Nodes)
         {
             var center = NodePosition(node);
-            var nodeColor = node.IsNavigable
+            var navigable = route.IsNavigable(node.Index);
+            var nodeColor = navigable
                 ? GetRouteNodeColor(node.Kind)
                 : ImGui.ColorConvertFloat4ToU32(new Vector4(0.3f, 0.32f, 0.35f, 1f));
             drawList.AddCircleFilled(center, 15f, nodeColor);
             drawList.AddCircle(center, 15f,
                 draft.Contains(node.Index)
                     ? ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 0.75f, 0.2f, 1f))
-                    : ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.85f, 1f)),
-                0, draft.Contains(node.Index) ? 3f : 1f);
+                    : route.GetOverride(node.Index).HasValue
+                        ? ImGui.ColorConvertFloat4ToU32(new Vector4(0.4f, 0.9f, 0.7f, 1f))
+                        : ImGui.ColorConvertFloat4ToU32(new Vector4(0.85f, 0.85f, 0.85f, 1f)),
+                0, draft.Contains(node.Index) || route.GetOverride(node.Index).HasValue ? 3f : 1f);
             drawList.AddText(center - new Vector2(node.Index >= 10 ? 8f : 4f, 7f), 0xFFFFFFFF, node.Index.ToString());
 
             ImGui.SetCursorScreenPos(center - new Vector2(17f, 17f));
             if (ImGui.InvisibleButton($"##route-node-{route.StageId}-{node.Index}", new Vector2(34f, 34f)))
+            {
+                routeSelectedNode = node.Index;
+                var effective = route.GetEffectiveCenter(node.Index);
+                routeCoordX = effective.X;
+                routeCoordY = effective.Y;
+                routeCoordZ = effective.Z;
+                routeCoordMessage = route.GetOverride(node.Index).HasValue
+                    ? $"已选中节点 {node.Index}（自定义坐标）"
+                    : $"已选中节点 {node.Index}";
                 AddRouteNode(route, draft, node.Index);
+            }
             if (ImGui.IsItemHovered())
             {
                 ImGui.BeginTooltip();
                 ImGui.TextUnformatted($"节点 {node.Index} · {ArenaNodeKindLabels.Get(node.Kind)}");
-                ImGui.TextDisabled(node.IsNavigable
-                    ? $"{node.Center.X:F2}, {node.Center.Y:F2}, {node.Center.Z:F2}"
+                var effective = route.GetEffectiveCenter(node.Index);
+                ImGui.TextDisabled(navigable
+                    ? $"{effective.X:F2}, {effective.Y:F2}, {effective.Z:F2}"
                     : "坐标未采集，仅用于路线图展示");
                 ImGui.EndTooltip();
             }
@@ -710,10 +732,111 @@ public sealed class MainWindow
         ImGui.SetCursorScreenPos(origin + new Vector2(0f, canvasSize.Y));
     }
 
+    private void DrawNodeCoordinateEditor(ArenaStageRoute route)
+    {
+        ImGui.Separator();
+        ImGui.TextDisabled("节点坐标：点击画布中的节点选中，然后编辑坐标。自定义坐标会启用对应节点的导航。");
+
+        if (routeSelectedNode < 0)
+        {
+            ImGui.TextDisabled("尚未选中节点");
+            return;
+        }
+
+        var node = route.Nodes.FirstOrDefault(x => x.Index == routeSelectedNode);
+        if (node == null)
+        {
+            ImGui.TextDisabled("已选节点不存在");
+            return;
+        }
+
+        ImGui.TextUnformatted($"节点 {routeSelectedNode} · {ArenaNodeKindLabels.Get(node.Kind)}");
+        ImGui.SameLine();
+        if (ImGui.SmallButton($"记录当前位置##route-pos-{route.StageId}"))
+        {
+            var player = DalamudApi.ObjectTable.LocalPlayer;
+            if (player == null)
+            {
+                routeCoordMessage = "无法记录：尚未登录或玩家不可用";
+            }
+            else
+            {
+                routeCoordX = player.Position.X;
+                routeCoordY = player.Position.Y;
+                routeCoordZ = player.Position.Z;
+                routeCoordMessage = $"已读取当前位置：{routeCoordX:F2}, {routeCoordY:F2}, {routeCoordZ:F2}";
+            }
+        }
+
+        ImGui.SetNextItemWidth(120f);
+        ImGui.InputFloat("X##route-x", ref routeCoordX);
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(120f);
+        ImGui.InputFloat("Y##route-y", ref routeCoordY);
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(120f);
+        ImGui.InputFloat("Z##route-z", ref routeCoordZ);
+
+        if (ImGui.Button($"保存坐标##route-save-{route.StageId}"))
+        {
+            if (!route.IsOnBoard(new Vector3(routeCoordX, routeCoordY, routeCoordZ)))
+            {
+                routeCoordMessage = "保存失败：坐标超出该盘棋盘范围";
+            }
+            else
+            {
+                if (!config.CustomNodeCoordinates.TryGetValue(route.StageId, out var nodes))
+                {
+                    nodes = [];
+                    config.CustomNodeCoordinates[route.StageId] = nodes;
+                }
+                nodes[routeSelectedNode] = new SerializableVector3(routeCoordX, routeCoordY, routeCoordZ);
+                config.Save();
+                routeCoordMessage = $"已保存节点 {routeSelectedNode} 坐标：{routeCoordX:F2}, {routeCoordY:F2}, {routeCoordZ:F2}";
+            }
+        }
+        ImGui.SameLine();
+        if (ImGui.Button($"清除该节点##route-clear-{route.StageId}"))
+        {
+            if (config.CustomNodeCoordinates.TryGetValue(route.StageId, out var nodes)
+                && nodes.Remove(routeSelectedNode))
+            {
+                if (nodes.Count == 0)
+                    config.CustomNodeCoordinates.Remove(route.StageId);
+                config.Save();
+                routeCoordMessage = $"已清除节点 {routeSelectedNode} 的自定义坐标";
+            }
+            else
+            {
+                routeCoordMessage = "该节点没有自定义坐标";
+            }
+        }
+        ImGui.SameLine();
+        if (ImGui.Button($"恢复全部默认##route-clearall-{route.StageId}"))
+        {
+            if (config.CustomNodeCoordinates.Remove(route.StageId))
+            {
+                config.Save();
+                routeCoordMessage = "已恢复该盘全部默认坐标";
+            }
+            else
+            {
+                routeCoordMessage = "该盘没有自定义坐标";
+            }
+        }
+
+        var overrideValue = route.GetOverride(routeSelectedNode);
+        ImGui.TextDisabled(overrideValue.HasValue
+            ? $"当前使用自定义坐标：{overrideValue.Value.X:F2}, {overrideValue.Value.Y:F2}, {overrideValue.Value.Z:F2}"
+            : $"当前使用内置坐标：{node.Center.X:F2}, {node.Center.Y:F2}, {node.Center.Z:F2}");
+        if (!string.IsNullOrWhiteSpace(routeCoordMessage))
+            ImGui.TextDisabled(routeCoordMessage);
+    }
+
     private void AddRouteNode(ArenaStageRoute route, List<int> draft, int node)
     {
         var target = route.Nodes.First(x => x.Index == node);
-        if (!target.IsNavigable)
+        if (!route.IsNavigable(node))
         {
             routeEditMessage = $"节点 {node} 尚未采集坐标，不能加入路线";
             return;

@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace ArenaPilot;
 
 public static class ArenaRoutes
@@ -51,4 +53,18 @@ public static class ArenaRoutes
 
     public static ArenaStageRoute? GetByStage(int stageId)
         => DisplayRoutes.FirstOrDefault(r => r.StageId == stageId);
+
+    public static void ApplyCoordinateOverrides(
+        IReadOnlyDictionary<int, Dictionary<int, SerializableVector3>> overrides)
+    {
+        var result = new Dictionary<int, IReadOnlyDictionary<int, Vector3>>();
+        foreach (var (stageId, nodes) in overrides)
+        {
+            var map = new Dictionary<int, Vector3>();
+            foreach (var (nodeIndex, value) in nodes)
+                map[nodeIndex] = new Vector3(value.X, value.Y, value.Z);
+            result[stageId] = map;
+        }
+        ArenaStageRoute.CoordinateOverrides = result;
+    }
 }
